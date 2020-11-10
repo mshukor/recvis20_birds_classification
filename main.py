@@ -34,28 +34,31 @@ if not os.path.isdir(args.experiment):
     os.makedirs(args.experiment)
 
 # Data initialization and loading
-from data import data_transforms
+from data import data_transforms_train, data_transforms_val
 
 train_loader = torch.utils.data.DataLoader(
     datasets.ImageFolder(args.data + '/train_images',
-                         transform=data_transforms),
+                         transform=data_transforms_train),
     batch_size=args.batch_size, shuffle=True, num_workers=1)
 val_loader = torch.utils.data.DataLoader(
     datasets.ImageFolder(args.data + '/val_images',
-                         transform=data_transforms),
+                         transform=data_transforms_val),
     batch_size=args.batch_size, shuffle=False, num_workers=1)
 
 # Neural network and optimizer
 # We define neural net in model.py so that it can be reused by the evaluate.py script
+from efficientnet_pytorch import EfficientNet
+model = EfficientNet.from_pretrained('efficientnet-b5')
+
 from model import Net
-model = Net()
+# model = Net()
 if use_cuda:
     print('Using GPU')
     model.cuda()
 else:
     print('Using CPU')
 
-optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum)
+optimizer = optim.Adam(model.parameters(), lr=args.lr) #momentum=args.momentum
 
 def train(epoch):
     model.train()
@@ -64,6 +67,7 @@ def train(epoch):
             data, target = data.cuda(), target.cuda()
         optimizer.zero_grad()
         output = model(data)
+       
         criterion = torch.nn.CrossEntropyLoss(reduction='mean')
         loss = criterion(output, target)
         loss.backward()

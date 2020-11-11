@@ -2,4 +2,6 @@ torch
 torchvision
 tqdm
 efficientnet-pytorch
+adabelief-pytorch==0.1.0
+ranger-adabelief==0.1.0
 

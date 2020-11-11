@@ -6,6 +6,8 @@ import torch.optim as optim
 from torchvision import datasets
 from torch.autograd import Variable
 from tqdm import tqdm
+from adabelief_pytorch import AdaBelief
+from ranger_adabelief import RangerAdaBelief
 
 # Training settings
 parser = argparse.ArgumentParser(description='RecVis A3 training script')
@@ -36,6 +38,12 @@ if not os.path.isdir(args.experiment):
 # Data initialization and loading
 from data import data_transforms_train, data_transforms_val
 
+online_data_aug = False
+if online_data_aug:
+  train_transform = data_transforms_val
+else:
+  train_transform = data_transforms_train
+
 train_loader = torch.utils.data.DataLoader(
     datasets.ImageFolder(args.data + '/train_images',
                          transform=data_transforms_train),
@@ -48,7 +56,7 @@ val_loader = torch.utils.data.DataLoader(
 # Neural network and optimizer
 # We define neural net in model.py so that it can be reused by the evaluate.py script
 from efficientnet_pytorch import EfficientNet
-model = EfficientNet.from_pretrained('efficientnet-b5')
+model = EfficientNet.from_pretrained('efficientnet-b5', num_classes=20)
 
 from model import Net
 # model = Net()
@@ -58,20 +66,29 @@ if use_cuda:
 else:
     print('Using CPU')
 
-optimizer = optim.Adam(model.parameters(), lr=args.lr) #momentum=args.momentum
+# optimizer = optim.Adam(model.parameters(), lr=args.lr) #momentum=args.momentum
+# optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum) #momentum=args.momentum
+# optimizer = AdaBelief(model.parameters(), lr=args.lr, eps=1e-16, betas=(0.9,0.999), weight_decouple = True, rectify = False)
+optimizer = RangerAdaBelief(model.parameters(), lr=args.lr, eps=1e-12, betas=(0.9,0.999))
 
 def train(epoch):
     model.train()
     for batch_idx, (data, target) in enumerate(train_loader):
+        if target.numpy().any() >= 20 and target.numpy().any() < 0:
+            print(target.numpy())
+            continue
         if use_cuda:
             data, target = data.cuda(), target.cuda()
         optimizer.zero_grad()
+        
+        
         output = model(data)
-       
+      
         criterion = torch.nn.CrossEntropyLoss(reduction='mean')
         loss = criterion(output, target)
         loss.backward()
         optimizer.step()
+      
         if batch_idx % args.log_interval == 0:
             print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
                 epoch, batch_idx * len(data), len(train_loader.dataset),
@@ -97,10 +114,10 @@ def validation():
         validation_loss, correct, len(val_loader.dataset),
         100. * correct / len(val_loader.dataset)))
 
-
+model_name = '/efficient5_aug_adabelief_ranger'
 for epoch in range(1, args.epochs + 1):
     train(epoch)
     validation()
-    model_file = args.experiment + '/model_' + str(epoch) + '.pth'
+    model_file = args.experiment + model_name +  '_model_' + str(epoch) + '.pth'
     torch.save(model.state_dict(), model_file)
     print('Saved model to ' + model_file + '. You can run `python evaluate.py --model ' + model_file + '` to generate the Kaggle formatted csv file\n')

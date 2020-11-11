@@ -19,7 +19,10 @@ args = parser.parse_args()
 use_cuda = torch.cuda.is_available()
 
 state_dict = torch.load(args.model)
-model = Net()
+
+from efficientnet_pytorch import EfficientNet
+model = EfficientNet.from_pretrained('efficientnet-b5', num_classes=20)
+
 model.load_state_dict(state_dict)
 model.eval()
 if use_cuda:
@@ -28,7 +31,7 @@ if use_cuda:
 else:
     print('Using CPU')
 
-from data import data_transforms
+from data import data_transforms_val
 
 test_dir = args.data + '/test_images/mistery_category'
 
@@ -38,7 +41,7 @@ def pil_loader(path):
         with Image.open(f) as img:
             return img.convert('RGB')
 
-
+data_transforms = data_transforms_val
 output_file = open(args.outfile, "w")
 output_file.write("Id,Category\n")
 for f in tqdm(os.listdir(test_dir)):

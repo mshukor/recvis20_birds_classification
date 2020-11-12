@@ -8,6 +8,7 @@ from torch.autograd import Variable
 from tqdm import tqdm
 from adabelief_pytorch import AdaBelief
 from ranger_adabelief import RangerAdaBelief
+from inception import *
 
 # Training settings
 parser = argparse.ArgumentParser(description='RecVis A3 training script')
@@ -27,6 +28,14 @@ parser.add_argument('--log-interval', type=int, default=10, metavar='N',
                     help='how many batches to wait before logging training status')
 parser.add_argument('--experiment', type=str, default='experiment', metavar='E',
                     help='folder where experiment outputs are located.')
+parser.add_argument('--name', type=str, default='efficient', metavar='E',
+                    help='folder where experiment outputs are located.')
+parser.add_argument('--num_classes', type=int, default=20, metavar='N',
+                    help='number of epochs to train (default: 10)')
+parser.add_argument('--online_da', type=bool, default=True, metavar='N',
+                    help='online data augmentaiion')
+
+
 args = parser.parse_args()
 use_cuda = torch.cuda.is_available()
 torch.manual_seed(args.seed)
@@ -37,26 +46,46 @@ if not os.path.isdir(args.experiment):
 
 # Data initialization and loading
 from data import data_transforms_train, data_transforms_val
+MODEL = "EFFICIENT" # EFFICIENT INCEPTION
+FREEZE = False
+TRAIN_IMAGES = '/images' # '/train_images' '/images
+VALID_IMAGES = '/val_images' #
+VALID = False
 
-online_data_aug = False
-if online_data_aug:
+if args.online_da:
   train_transform = data_transforms_val
 else:
   train_transform = data_transforms_train
 
+
 train_loader = torch.utils.data.DataLoader(
-    datasets.ImageFolder(args.data + '/train_images',
+    datasets.ImageFolder(args.data + TRAIN_IMAGES,
                          transform=data_transforms_train),
     batch_size=args.batch_size, shuffle=True, num_workers=1)
-val_loader = torch.utils.data.DataLoader(
-    datasets.ImageFolder(args.data + '/val_images',
-                         transform=data_transforms_val),
-    batch_size=args.batch_size, shuffle=False, num_workers=1)
+if VALID:
+  val_loader = torch.utils.data.DataLoader(
+      datasets.ImageFolder(args.data + VALID_IMAGES,
+                          transform=data_transforms_val),
+      batch_size=args.batch_size, shuffle=False, num_workers=1)
 
 # Neural network and optimizer
 # We define neural net in model.py so that it can be reused by the evaluate.py script
 from efficientnet_pytorch import EfficientNet
-model = EfficientNet.from_pretrained('efficientnet-b5', num_classes=20)
+if MODEL == "EFFICIENT":
+  model = EfficientNet.from_pretrained('efficientnet-b5', num_classes=args.num_classes)
+elif MODEL == "INCEPTION":
+  model = inception_v3(pretrained=False)
+  model.fc = nn.Linear(2048, 8142)
+  print("loading pretrained model")
+  checkpoint = torch.load("iNat_2018_InceptionV3.pth.tar")
+  model.load_state_dict(checkpoint['state_dict']) 
+  model.fc = nn.Linear(2048, args.num_classes)
+  model.aux_logits = False
+  if FREEZE:
+    for name, param in model.named_parameters():
+        if param.requires_grad:
+            if name.split(".")[0] not in ["Mixed_6e", "AuxLogits", "Mixed_7a", "Mixed_7b", "Mixed_7c", "fc"]:
+              param.requires_grad = False
 
 from model import Net
 # model = Net()
@@ -114,10 +143,11 @@ def validation():
         validation_loss, correct, len(val_loader.dataset),
         100. * correct / len(val_loader.dataset)))
 
-model_name = '/efficient5_aug_adabelief_ranger'
+model_name = "/" + args.name
 for epoch in range(1, args.epochs + 1):
     train(epoch)
-    validation()
+    if VALID:
+      validation()
     model_file = args.experiment + model_name +  '_model_' + str(epoch) + '.pth'
     torch.save(model.state_dict(), model_file)
     print('Saved model to ' + model_file + '. You can run `python evaluate.py --model ' + model_file + '` to generate the Kaggle formatted csv file\n')

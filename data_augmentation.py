@@ -46,7 +46,7 @@ for file in tqdm(listOfFile):
         name = img_path.split("/")[-1].split(".")[0]
 
         im_pil.save(prefix +'/' + name + "_aug.jpg")
-      except TypeError:
+      except TypeError or ValueError:
         continue
 
 

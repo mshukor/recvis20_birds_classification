@@ -4,8 +4,10 @@ import os
 import PIL.Image as Image
 
 import torch
+from inception import *
 
 from model import Net
+import torch.nn as nn
 
 parser = argparse.ArgumentParser(description='RecVis A3 evaluation script')
 parser.add_argument('--data', type=str, default='bird_dataset', metavar='D',
@@ -18,10 +20,16 @@ parser.add_argument('--outfile', type=str, default='experiment/kaggle.csv', meta
 args = parser.parse_args()
 use_cuda = torch.cuda.is_available()
 
-state_dict = torch.load(args.model)
+if use_cuda:
+  state_dict = torch.load(args.model)
+else:
+  state_dict = torch.load(args.model, map_location=torch.device('cpu'))
 
 from efficientnet_pytorch import EfficientNet
-model = EfficientNet.from_pretrained('efficientnet-b6', num_classes=20)
+
+# model = EfficientNet.from_pretrained('efficientnet-b6', num_classes=20)
+model = inception_v3(pretrained=False)
+model.fc = nn.Linear(2048, 20)
 
 model.load_state_dict(state_dict)
 model.eval()

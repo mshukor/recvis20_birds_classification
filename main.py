@@ -48,9 +48,10 @@ if not os.path.isdir(args.experiment):
 from data import data_transforms_train, data_transforms_val
 MODEL = "EFFICIENT" # EFFICIENT INCEPTION
 FREEZE = False
-TRAIN_IMAGES = '/images' # '/train_images' '/images
+TRAIN_IMAGES = '/train_images' # '/train_images' '/images
 VALID_IMAGES = '/val_images' #
-VALID = False
+VALID = True
+PRETRAIN = False
 
 if args.online_da:
   train_transform = data_transforms_val
@@ -72,7 +73,14 @@ if VALID:
 # We define neural net in model.py so that it can be reused by the evaluate.py script
 from efficientnet_pytorch import EfficientNet
 if MODEL == "EFFICIENT":
-  model = EfficientNet.from_pretrained('efficientnet-b5', num_classes=args.num_classes)
+  if PRETRAIN:
+    model = EfficientNet.from_pretrained('efficientnet-b6', num_classes=555)
+    checkpoint = torch.load("experiment/efficient_pretrain_nabirds_model_1.pth")
+    model.load_state_dict(checkpoint) 
+    model._fc = nn.Linear(2048, args.num_classes)
+  else:
+    model = EfficientNet.from_pretrained('efficientnet-b6', num_classes=args.num_classes)
+  
 elif MODEL == "INCEPTION":
   model = inception_v3(pretrained=False)
   model.fc = nn.Linear(2048, 8142)
@@ -87,6 +95,8 @@ elif MODEL == "INCEPTION":
             if name.split(".")[0] not in ["Mixed_6e", "AuxLogits", "Mixed_7a", "Mixed_7b", "Mixed_7c", "fc"]:
               param.requires_grad = False
 
+
+
 from model import Net
 # model = Net()
 if use_cuda:
@@ -99,8 +109,9 @@ else:
 # optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum) #momentum=args.momentum
 # optimizer = AdaBelief(model.parameters(), lr=args.lr, eps=1e-16, betas=(0.9,0.999), weight_decouple = True, rectify = False)
 optimizer = RangerAdaBelief(model.parameters(), lr=args.lr, eps=1e-12, betas=(0.9,0.999))
-
+# lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, args.epochs)
 def train(epoch):
+    # lr_scheduler.step()
     model.train()
     for batch_idx, (data, target) in enumerate(train_loader):
         if target.numpy().any() >= 20 and target.numpy().any() < 0:

@@ -21,7 +21,7 @@ use_cuda = torch.cuda.is_available()
 state_dict = torch.load(args.model)
 
 from efficientnet_pytorch import EfficientNet
-model = EfficientNet.from_pretrained('efficientnet-b5', num_classes=20)
+model = EfficientNet.from_pretrained('efficientnet-b6', num_classes=20)
 
 model.load_state_dict(state_dict)
 model.eval()

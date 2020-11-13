@@ -9,11 +9,15 @@ from tqdm import tqdm
 from adabelief_pytorch import AdaBelief
 from ranger_adabelief import RangerAdaBelief
 from inception import *
+from data import ConcatDataset
 
 # Training settings
 parser = argparse.ArgumentParser(description='RecVis A3 training script')
 parser.add_argument('--data', type=str, default='bird_dataset', metavar='D',
                     help="folder where data is located. train_images/ and val_images/ need to be found in the folder")
+parser.add_argument('--data-crop', type=str, default='cropped', metavar='D',
+                    help="folder where data is located. train_images/ and val_images/ need to be found in the folder")
+
 parser.add_argument('--batch-size', type=int, default=64, metavar='B',
                     help='input batch size for training (default: 64)')
 parser.add_argument('--epochs', type=int, default=10, metavar='N',
@@ -34,6 +38,8 @@ parser.add_argument('--num_classes', type=int, default=20, metavar='N',
                     help='number of epochs to train (default: 10)')
 parser.add_argument('--online_da', type=bool, default=True, metavar='N',
                     help='online data augmentaiion')
+parser.add_argument('--merged', type=bool, default=False, metavar='N',
+                    help='use several datasets')
 
 
 args = parser.parse_args()
@@ -58,14 +64,29 @@ if args.online_da:
 else:
   train_transform = data_transforms_train
 
+if args.merged:
+  data_orig = datasets.ImageFolder(args.data + TRAIN_IMAGES,
+                          transform=data_transforms_train)
 
-train_loader = torch.utils.data.DataLoader(
-    datasets.ImageFolder(args.data + TRAIN_IMAGES,
-                         transform=data_transforms_train),
-    batch_size=args.batch_size, shuffle=True, num_workers=1)
+  data_crop = datasets.ImageFolder(args.data_crop + TRAIN_IMAGES,
+                          transform=data_transforms_train)
+  train_loader = torch.utils.data.DataLoader(
+      ConcatDataset(data_orig, data_crop),
+      batch_size=args.batch_size, shuffle=True, num_workers=1)
+  
+else:
+  train_loader = torch.utils.data.DataLoader(
+      datasets.ImageFolder(args.data + TRAIN_IMAGES,
+                          transform=data_transforms_train),
+      batch_size=args.batch_size, shuffle=True, num_workers=1)
 if VALID:
   val_loader = torch.utils.data.DataLoader(
       datasets.ImageFolder(args.data + VALID_IMAGES,
+                          transform=data_transforms_val),
+      batch_size=args.batch_size, shuffle=False, num_workers=1)
+  if args.merged:
+    val_loader_crop = torch.utils.data.DataLoader(
+      datasets.ImageFolder(args.data_crop + VALID_IMAGES,
                           transform=data_transforms_val),
       batch_size=args.batch_size, shuffle=False, num_workers=1)
 
@@ -134,7 +155,7 @@ def train(epoch):
                 epoch, batch_idx * len(data), len(train_loader.dataset),
                 100. * batch_idx / len(train_loader), loss.data.item()))
 
-def validation():
+def validation(val_loader):
     model.eval()
     validation_loss = 0
     correct = 0
@@ -158,7 +179,10 @@ model_name = "/" + args.name
 for epoch in range(1, args.epochs + 1):
     train(epoch)
     if VALID:
-      validation()
+      validation(val_loader)
+      if args.merged:
+        print("validation on cropped")
+        validation(val_loader_crop)
     model_file = args.experiment + model_name +  '_model_' + str(epoch) + '.pth'
     torch.save(model.state_dict(), model_file)
     print('Saved model to ' + model_file + '. You can run `python evaluate.py --model ' + model_file + '` to generate the Kaggle formatted csv file\n')

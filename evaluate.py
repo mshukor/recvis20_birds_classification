@@ -27,9 +27,9 @@ else:
 
 from efficientnet_pytorch import EfficientNet
 
-# model = EfficientNet.from_pretrained('efficientnet-b6', num_classes=20)
-model = inception_v3(pretrained=False)
-model.fc = nn.Linear(2048, 20)
+model = EfficientNet.from_pretrained('efficientnet-b6', num_classes=20)
+# model = inception_v3(pretrained=False)
+# model.fc = nn.Linear(2048, 20)
 
 model.load_state_dict(state_dict)
 model.eval()

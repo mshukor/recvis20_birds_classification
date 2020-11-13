@@ -6,6 +6,13 @@ import torch
 from PIL import Image
 from tqdm import tqdm
 
+
+parser = argparse.ArgumentParser(description='RecVis A3 training script')
+parser.add_argument('--dirname', type=str, default='bird_dataset/train_images', metavar='D',
+                    help="folder where data is located. train_images/ and val_images/ need to be found in the folder")
+
+args = parser.parse_args()
+
 def normalize8(I):
   mn = I.min()
   mx = I.max()
@@ -27,7 +34,7 @@ data_transforms_train = transforms.Compose([
                                  std=[0.229, 0.224, 0.225])
 ])
 
-dirName = 'bird_dataset/train_images'
+dirName = args.dirname #'crop_dataset/train_images' # 'bird_dataset/train_images'
 
 listOfFile = os.listdir(dirName)
 completeFileList = list()

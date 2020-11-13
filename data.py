@@ -1,12 +1,10 @@
 import zipfile
 import os
-
+import torch
 import torchvision.transforms as transforms
-# import torchsample
-# once the images are loaded, how do we pre-process them before being passed into the network
-# by default, we resize the images to 64 x 64 in size
-# and normalize them to mean = 0 and standard-deviation = 1 based on statistics collected from
-# the training set
+import numpy as np
+
+
 data_transforms_train = transforms.Compose([
     transforms.Resize((456, 456)),
     transforms.ToTensor(),
@@ -24,4 +22,22 @@ data_transforms_val = transforms.Compose([
     transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                  std=[0.229, 0.224, 0.225])
 ])
+
+class ConcatDataset(torch.utils.data.Dataset):
+    def __init__(self, *datasets):
+        self.datasets = datasets
+        self.lengths = [len(d) for d in datasets]
+        self.offsets = np.cumsum(self.lengths)
+        self.length = np.sum(self.lengths)
+
+    def __getitem__(self, index):
+        for i, offset in enumerate(self.offsets):
+            if index < offset:
+                if i > 0:
+                    index -= self.offsets[i-1]
+                return self.datasets[i][index]
+        raise IndexError(f'{index} exceeds {self.length}')
+
+    def __len__(self):
+        return self.length
 

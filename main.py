@@ -15,7 +15,9 @@ from data import ConcatDataset
 parser = argparse.ArgumentParser(description='RecVis A3 training script')
 parser.add_argument('--data', type=str, default='bird_dataset', metavar='D',
                     help="folder where data is located. train_images/ and val_images/ need to be found in the folder")
-parser.add_argument('--data-crop', type=str, default='cropped', metavar='D',
+parser.add_argument('--data-crop', type=str, default=None, metavar='D',
+                    help="folder where data is located. train_images/ and val_images/ need to be found in the folder")
+parser.add_argument('--data-mask', type=str, default=None, metavar='D',
                     help="folder where data is located. train_images/ and val_images/ need to be found in the folder")
 
 parser.add_argument('--batch-size', type=int, default=64, metavar='B',
@@ -38,8 +40,8 @@ parser.add_argument('--num_classes', type=int, default=20, metavar='N',
                     help='number of epochs to train (default: 10)')
 parser.add_argument('--online_da', type=bool, default=True, metavar='N',
                     help='online data augmentaiion')
-parser.add_argument('--merged', type=bool, default=False, metavar='N',
-                    help='use several datasets')
+# parser.add_argument('--merged', type=bool, default=False, metavar='N',
+#                     help='use several datasets')
 
 
 args = parser.parse_args()
@@ -64,27 +66,40 @@ if args.online_da:
 else:
   train_transform = data_transforms_train
 
-if args.merged:
-  data_orig = datasets.ImageFolder(args.data + TRAIN_IMAGES,
+data_orig = datasets.ImageFolder(args.data + TRAIN_IMAGES,
                           transform=data_transforms_train)
 
+if args.data_crop:
   data_crop = datasets.ImageFolder(args.data_crop + TRAIN_IMAGES,
-                          transform=data_transforms_train)
+                          transform=data_transforms_val)
+else:
+  data_crop = None
+
+if args.data_mask:
+  data_mask = datasets.ImageFolder(args.data_mask + TRAIN_IMAGES,
+                        transform=data_transforms_val)
+else:
+  data_mask = None
+
+if args.data_crop and args.data_mask:
+  train_loader = torch.utils.data.DataLoader(
+      ConcatDataset(data_orig, data_crop, data_mask),
+      batch_size=args.batch_size, shuffle=True, num_workers=1)
+elif args.data_crop:
   train_loader = torch.utils.data.DataLoader(
       ConcatDataset(data_orig, data_crop),
       batch_size=args.batch_size, shuffle=True, num_workers=1)
-  
 else:
   train_loader = torch.utils.data.DataLoader(
-      datasets.ImageFolder(args.data + TRAIN_IMAGES,
-                          transform=data_transforms_train),
+      data_orig,
       batch_size=args.batch_size, shuffle=True, num_workers=1)
+
 if VALID:
   val_loader = torch.utils.data.DataLoader(
       datasets.ImageFolder(args.data + VALID_IMAGES,
                           transform=data_transforms_val),
       batch_size=args.batch_size, shuffle=False, num_workers=1)
-  if args.merged:
+  if args.data_crop:
     val_loader_crop = torch.utils.data.DataLoader(
       datasets.ImageFolder(args.data_crop + VALID_IMAGES,
                           transform=data_transforms_val),
@@ -180,7 +195,7 @@ for epoch in range(1, args.epochs + 1):
     train(epoch)
     if VALID:
       validation(val_loader)
-      if args.merged:
+      if args.data_crop:
         print("validation on cropped")
         validation(val_loader_crop)
     model_file = args.experiment + model_name +  '_model_' + str(epoch) + '.pth'

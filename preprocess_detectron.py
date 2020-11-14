@@ -108,8 +108,9 @@ def detect_birds(model, input_folder, output_folder_crop, generate_masks=False, 
             continue
           bird = int(torch.max(detections.scores[index_birds],0)[1].cpu().numpy())
           [x1,y1,x2,y2]=detections.pred_boxes[index_birds][bird].tensor[0].cpu().numpy()
-          mask = detections.pred_masks[index_birds][bird].tensor[0].cpu().numpy().astype(np.uint8).squeeze()
+          mask = detections.pred_masks.cpu().numpy().astype(np.uint8).squeeze()
           count=1
+          invalid_mask = False
 
 
           # If we are able to detect the bird, enlarge the bounding box and generate a new image
@@ -118,19 +119,24 @@ def detect_birds(model, input_folder, output_folder_crop, generate_masks=False, 
           
           # generate mask
           if generate_masks:
-            dilate_img = cv2.dilate(mask, kernel, iterations=1)
-            masked_img = cv2.bitwise_and(img, img, mask = dilate_img)
+            if len(mask.shape) > 2:
+              invalid_mask = True
+              imgcv = cv2.imread(path)
+              dilate_img = cv2.dilate(mask, kernel, iterations=1)
+              masked_img = cv2.bitwise_and(imgcv, imgcv, mask = dilate_img)
             
           img = img[int(np.ceil(y1)):int(y2), int(np.ceil(x1)):int(x2), :]
           # crop the masked image
-          masked_img = masked_img[int(np.ceil(y1)):int(y2), int(np.ceil(x1)):int(x2), :]
+          if not invalid_mask:
+            masked_img = masked_img[int(np.ceil(y1)):int(y2), int(np.ceil(x1)):int(x2), :]
 
           # Save generated image with detections
           path = path.split("/")[-1]
           plt.imsave(output_folder_crop+'/'+data_folder+'/'+folder+'/'+path, img, dpi=1000)
           if generate_masks:
-            masked_img = cv2.cvtColor(masked_img, cv2.COLOR_BGR2RGB)
-            plt.imsave(output_folder_mask+'/'+data_folder+'/'+folder+'/'+path, masked_img, dpi=1000)
+            if not invalid_mask:
+              masked_img = cv2.cvtColor(masked_img, cv2.COLOR_BGR2RGB)
+              plt.imsave(output_folder_mask+'/'+data_folder+'/'+folder+'/'+path, masked_img, dpi=1000)
           plt.close()   
           
         else:
@@ -146,4 +152,4 @@ def detect_birds(model, input_folder, output_folder_crop, generate_masks=False, 
     print("\t{}% of {} images non cropped".format(np.round(100*non_cropped/num_imgs,2),data_folder))
   return(non_cropped_names)
 
-non_cropped_paths = detect_birds(model=model, input_folder=args.input_folder, output_folder=args.output_folder, generate_masks=args.generate_masks)
+non_cropped_paths = detect_birds(model=model, input_folder=args.input_folder, output_folder_crop=args.output_folder_crop, output_folder_mask = args.output_folder_mask, generate_masks=args.generate_masks)

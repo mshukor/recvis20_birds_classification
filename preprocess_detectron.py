@@ -8,6 +8,7 @@ from torch.autograd import Variable
 from PIL import Image, ImageOps, ImageFilter, ImageEnhance
 import os
 import sys
+import argparse
 
 # Setup detectron2 logger
 import detectron2
@@ -33,6 +34,8 @@ parser.add_argument('--input-folder', type=str, default='bird_dataset', metavar=
 parser.add_argument('--output-folder-crop', type=str, default='crop_dataset', metavar='D',
                     help="folder where data is located. train_images/ and val_images/ need to be found in the folder")
 parser.add_argument('--output-folder-mask', type=str, default='mask_dataset', metavar='D',
+                    help="folder where data is located. train_images/ and val_images/ need to be found in the folder")
+parser.add_argument('--generate-masks', type=str, default='mask_dataset', metavar='D',
                     help="folder where data is located. train_images/ and val_images/ need to be found in the folder")
 
 
@@ -105,7 +108,7 @@ def detect_birds(model, input_folder, output_folder_crop, generate_masks=False, 
             continue
           bird = int(torch.max(detections.scores[index_birds],0)[1].cpu().numpy())
           [x1,y1,x2,y2]=detections.pred_boxes[index_birds][bird].tensor[0].cpu().numpy()
-          mask = detections.pred_masks[index_birds][bird].tensor[0].cpu().numpy()
+          mask = detections.pred_masks[index_birds][bird].tensor[0].cpu().numpy().astype(np.uint8).squeeze()
           count=1
 
 
@@ -114,7 +117,7 @@ def detect_birds(model, input_folder, output_folder_crop, generate_masks=False, 
           x2, y2 = np.minimum(x2+40,img.shape[1]), np.minimum(y2+40,img.shape[0])
           
           # generate mask
-          if use_masks:
+          if generate_masks:
             dilate_img = cv2.dilate(mask, kernel, iterations=1)
             masked_img = cv2.bitwise_and(img, img, mask = dilate_img)
             
@@ -125,8 +128,9 @@ def detect_birds(model, input_folder, output_folder_crop, generate_masks=False, 
           # Save generated image with detections
           path = path.split("/")[-1]
           plt.imsave(output_folder_crop+'/'+data_folder+'/'+folder+'/'+path, img, dpi=1000)
-          if use_masks:
-            plt.imsave(output_folder_mask+'/'+data_folder+'/'+folder+'/'+path, img, dpi=1000)
+          if generate_masks:
+            masked_img = cv2.cvtColor(masked_img, cv2.COLOR_BGR2RGB)
+            plt.imsave(output_folder_mask+'/'+data_folder+'/'+folder+'/'+path, masked_img, dpi=1000)
           plt.close()   
           
         else:
@@ -136,12 +140,10 @@ def detect_birds(model, input_folder, output_folder_crop, generate_masks=False, 
           path = path.split("/")[-1]
           # Flip the image if we are not able to detect it
           plt.imsave(output_folder_crop+'/'+data_folder+'/'+folder+'/'+path, np.array(ImageOps.mirror(Image.fromarray(img))), dpi=1000)
-          if use_masks:
-            plt.imsave(output_folder_mask+'/'+data_folder+'/'+folder+'/'+path, np.array(ImageOps.mirror(Image.fromarray(img))), dpi=1000)
 
           plt.close()  
 
     print("\t{}% of {} images non cropped".format(np.round(100*non_cropped/num_imgs,2),data_folder))
   return(non_cropped_names)
 
-non_cropped_paths = detect_birds(model=model, input_folder=args.input_folder, output_folder=args.output_folder)
+non_cropped_paths = detect_birds(model=model, input_folder=args.input_folder, output_folder=args.output_folder, generate_masks=args.generate_masks)

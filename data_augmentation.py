@@ -1,3 +1,4 @@
+import argparse
 import random
 import os
 import numpy as np
@@ -27,11 +28,12 @@ data_transforms_train = transforms.Compose([
     transforms.ToTensor(),
     transforms.RandomHorizontalFlip(p=0.5),
     transforms.RandomRotation(25),
-    transforms.RandomResizedCrop((456, 456), scale=(0.09, 1.0), ratio=(0.9, 1.1)),
+    transforms.RandomResizedCrop((456, 456), scale=(0.7, 1.3), ratio=(0.8, 1.2)),
     transforms.GaussianBlur(5, sigma=(0.1, 2.0)),
     transforms.ColorJitter(brightness=0.15, contrast=0.15, saturation=0.15, hue=0.15),
-    transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                                 std=[0.229, 0.224, 0.225])
+    transforms.RandomAffine(0, translate=(0.07, 0.07), scale=(0.6, 1.4)),
+    # transforms.Normalize(mean=[0.485, 0.456, 0.406],
+    #                              std=[0.229, 0.224, 0.225])
 ])
 
 dirName = args.dirname #'crop_dataset/train_images' # 'bird_dataset/train_images'

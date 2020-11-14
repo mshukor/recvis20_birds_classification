@@ -79,7 +79,7 @@ def detect_birds(model, input_folder, output_folder_crop, generate_masks=False, 
           i = Image.fromarray(i)
           i = i.convert('RGB')
           i.save(directory+'/'+folder+'/'+file)
-      del i
+        del i
                 
       # Get image paths and detections : not the most efficient way, but it avoids defining a proper detectron2-specific Dataloader 
       for img_path in list(os.listdir(directory+'/'+folder)):
@@ -121,6 +121,7 @@ def detect_birds(model, input_folder, output_folder_crop, generate_masks=False, 
           if generate_masks:
             if len(mask.shape) > 2:
               invalid_mask = True
+            else:
               imgcv = cv2.imread(path)
               dilate_img = cv2.dilate(mask, kernel, iterations=1)
               masked_img = cv2.bitwise_and(imgcv, imgcv, mask = dilate_img)
@@ -132,7 +133,7 @@ def detect_birds(model, input_folder, output_folder_crop, generate_masks=False, 
 
           # Save generated image with detections
           path = path.split("/")[-1]
-          plt.imsave(output_folder_crop+'/'+data_folder+'/'+folder+'/'+path, img, dpi=1000)
+          plt.imsave(output_folder_crop+'/'+data_folder+'/'+folder+'/crop'+path, img, dpi=1000)
           if generate_masks:
             if not invalid_mask:
               masked_img = cv2.cvtColor(masked_img, cv2.COLOR_BGR2RGB)
@@ -145,7 +146,7 @@ def detect_birds(model, input_folder, output_folder_crop, generate_masks=False, 
           non_cropped+=1
           path = path.split("/")[-1]
           # Flip the image if we are not able to detect it
-          plt.imsave(output_folder_crop+'/'+data_folder+'/'+folder+'/'+path, np.array(ImageOps.mirror(Image.fromarray(img))), dpi=1000)
+          plt.imsave(output_folder_crop+'/'+data_folder+'/'+folder+'/crop'+path, np.array(ImageOps.mirror(Image.fromarray(img))), dpi=1000)
 
           plt.close()  
 

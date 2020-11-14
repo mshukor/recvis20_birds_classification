@@ -16,7 +16,7 @@ args = parser.parse_args()
 DATA = 'bird_dataset'
 VALID_IMAGES = '/val_images' #
 model_path = args.model
-use_cuda = False
+use_cuda = True
 
 val_loader = torch.utils.data.DataLoader(
     datasets.ImageFolder(DATA+ VALID_IMAGES,

@@ -19,6 +19,11 @@ parser.add_argument('--data-crop', type=str, default=None, metavar='D',
                     help="folder where data is located. train_images/ and val_images/ need to be found in the folder")
 parser.add_argument('--data-mask', type=str, default=None, metavar='D',
                     help="folder where data is located. train_images/ and val_images/ need to be found in the folder")
+parser.add_argument('--data-pseudo', type=str, default=None, metavar='D',
+                    help="folder where data is located. train_images/ and val_images/ need to be found in the folder")
+
+parser.add_argument('--model', type=str, default=None, metavar='D',
+                    help="folder where data is located. train_images/ and val_images/ need to be found in the folder")
 
 parser.add_argument('--batch-size', type=int, default=64, metavar='B',
                     help='input batch size for training (default: 64)')
@@ -81,10 +86,23 @@ if args.data_mask:
 else:
   data_mask = None
 
+if args.data_pseudo:
+  data_pseudo = datasets.ImageFolder(args.data_pseudo + TRAIN_IMAGES,
+                        transform=data_transforms_val)
+else:
+  data_pseudo = None
+
+
 if args.data_crop and args.data_mask:
   train_loader = torch.utils.data.DataLoader(
       ConcatDataset(data_orig, data_crop, data_mask),
       batch_size=args.batch_size, shuffle=True, num_workers=1)
+
+elif args.data_crop and args.data_pseudo:
+  train_loader = torch.utils.data.DataLoader(
+      ConcatDataset(data_orig, data_crop, data_pseudo),
+      batch_size=args.batch_size, shuffle=True, num_workers=1)
+      
 elif args.data_crop:
   train_loader = torch.utils.data.DataLoader(
       ConcatDataset(data_orig, data_crop),
@@ -98,12 +116,12 @@ if VALID:
   val_loader = torch.utils.data.DataLoader(
       datasets.ImageFolder(args.data + VALID_IMAGES,
                           transform=data_transforms_val),
-      batch_size=args.batch_size, shuffle=False, num_workers=1)
+      batch_size=2, shuffle=False, num_workers=1)
   if args.data_crop:
     val_loader_crop = torch.utils.data.DataLoader(
       datasets.ImageFolder(args.data_crop + VALID_IMAGES,
                           transform=data_transforms_val),
-      batch_size=args.batch_size, shuffle=False, num_workers=1)
+      batch_size=2, shuffle=False, num_workers=1)
 
 # Neural network and optimizer
 # We define neural net in model.py so that it can be reused by the evaluate.py script
@@ -116,7 +134,7 @@ if MODEL == "EFFICIENT":
     model._fc = nn.Linear(2048, args.num_classes)
   else:
     model = EfficientNet.from_pretrained('efficientnet-b6', num_classes=args.num_classes)
-  
+
 elif MODEL == "INCEPTION":
   model = inception_v3(pretrained=False)
   model.fc = nn.Linear(2048, 8142)
@@ -132,7 +150,11 @@ elif MODEL == "INCEPTION":
               param.requires_grad = False
 
 
-
+if args.model:
+    print("loading pretrained model")
+    checkpoint = torch.load(args.model)
+    model.load_state_dict(checkpoint) 
+ 
 from model import Net
 # model = Net()
 if use_cuda:
@@ -150,6 +172,7 @@ def train(epoch):
     # lr_scheduler.step()
     model.train()
     for batch_idx, (data, target) in enumerate(train_loader):
+        
         if target.numpy().any() >= 20 and target.numpy().any() < 0:
             print(target.numpy())
             continue
@@ -164,7 +187,6 @@ def train(epoch):
         loss = criterion(output, target)
         loss.backward()
         optimizer.step()
-      
         if batch_idx % args.log_interval == 0:
             print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
                 epoch, batch_idx * len(data), len(train_loader.dataset),

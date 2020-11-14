@@ -26,7 +26,8 @@ parser.add_argument('--thresh', type=float, default=0.8, metavar='D',
                     help="threshold for pseudo labels")
 parser.add_argument('--temp', type=float, default=1, metavar='D',
                     help="threshold for pseudo labels")
-
+parser.add_argument('--test', type=bool, default=False, metavar='D',
+                    help="threshold for pseudo labels")
 args = parser.parse_args()
 
 
@@ -102,10 +103,11 @@ def pseudo_annotate():
         if confidence[0] > args.thresh*100:
           count +=1
           print(count)
-          plt.imsave(output_folder_pseudo+'/'+'train_images'+'/'+folder_name+'/'+folder_name + "_" + str(count) + ".jpg", image, dpi=1000)
+          if not args.test:
+            plt.imsave(output_folder_pseudo+'/'+'train_images'+'/'+folder_name+'/'+folder_name.split(".")[1] + "_" + str(count) + ".jpg", image, dpi=1000)
 
 
     print('\n Number of annotated images: {}, percentage_annotated = {}/{}'.format(
-        count, 100. * count / len(val_loader.dataset)))
+        count, 100. * count / len(loader.dataset)))
     
 pseudo_annotate()

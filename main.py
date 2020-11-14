@@ -53,6 +53,8 @@ args = parser.parse_args()
 use_cuda = torch.cuda.is_available()
 torch.manual_seed(args.seed)
 
+torch.manual_seed(0)
+
 # Create experiment folder
 if not os.path.isdir(args.experiment):
     os.makedirs(args.experiment)
@@ -71,9 +73,27 @@ if args.online_da:
 else:
   train_transform = data_transforms_train
 
-data_orig = datasets.ImageFolder(args.data + TRAIN_IMAGES,
-                          transform=data_transforms_train)
+NEW_EVAL = True
 
+def train_val_dataset(dataset, val_split=0.08):
+    train_idx, val_idx = train_test_split(list(range(len(dataset))), test_size=val_split)
+    datasets = {}
+    dataset_train = Subset(dataset, train_idx)
+    dataset_val = Subset(dataset, val_idx)
+    return dataset_train, dataset_val
+
+if NEW_EVAL:
+  data_old_train = datasets.ImageFolder(args.data + TRAIN_IMAGES, transform=data_transforms_train)
+  data_old_val = datasets.ImageFolder(args.data + VALID_IMAGES, transform=data_transforms_train)
+  dataset = ConcatDataset(data_old_train, data_old_val)
+  print(len(dataset))
+  data_orig, data_orig_val = train_val_dataset(dataset)
+
+else:
+  data_orig = datasets.ImageFolder(args.data + TRAIN_IMAGES,
+                            transform=data_transforms_train)
+  data_orig_val = datasets.ImageFolder(args.data + VALID_IMAGES,
+                            transform=data_transforms_val)
 if args.data_crop:
   data_crop = datasets.ImageFolder(args.data_crop + TRAIN_IMAGES,
                           transform=data_transforms_val)
@@ -114,8 +134,7 @@ else:
 
 if VALID:
   val_loader = torch.utils.data.DataLoader(
-      datasets.ImageFolder(args.data + VALID_IMAGES,
-                          transform=data_transforms_val),
+      data_orig_val,
       batch_size=2, shuffle=False, num_workers=1)
   if args.data_crop:
     val_loader_crop = torch.utils.data.DataLoader(

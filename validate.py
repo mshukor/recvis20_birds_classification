@@ -5,6 +5,10 @@ from torchvision import datasets
 from inception import *
 import torch.nn as nn
 import argparse
+from data import ConcatDataset
+
+from torch.utils.data import Subset
+from sklearn.model_selection import train_test_split
 
 parser = argparse.ArgumentParser(description='RecVis A3 training script')
 parser.add_argument('--model', type=str, default='inceptionv3_model_13.pth', metavar='D',
@@ -15,13 +19,38 @@ args = parser.parse_args()
 
 DATA = 'bird_dataset'
 VALID_IMAGES = '/val_images' #
+TRAIN_IMAGES = '/train_images' # '/train_images' '/images
+
 model_path = args.model
 use_cuda = True
 
+
+torch.manual_seed(0)
+
+NEW_EVAL = True
+
+def train_val_dataset(dataset, val_split=0.08):
+    train_idx, val_idx = train_test_split(list(range(len(dataset))), test_size=val_split)
+    datasets = {}
+    dataset_train = Subset(dataset, train_idx)
+    dataset_val = Subset(dataset, val_idx)
+    return dataset_train, dataset_val
+
+if NEW_EVAL:
+  data_old_train = datasets.ImageFolder(DATA + TRAIN_IMAGES, transform=data_transforms_train)
+  data_old_val = datasets.ImageFolder(DATA + VALID_IMAGES, transform=data_transforms_train)
+  dataset = ConcatDataset(data_old_train, data_old_val)
+  print(len(dataset))
+  _, data_val = train_val_dataset(dataset)
+
+else:
+  data_val = datasets.ImageFolder(DATA+ VALID_IMAGES,
+                        transform=data_transforms_val)
+
 val_loader = torch.utils.data.DataLoader(
-    datasets.ImageFolder(DATA+ VALID_IMAGES,
-                        transform=data_transforms_val),
+    data_val,
     batch_size=4, shuffle=False, num_workers=1)
+
 
 # model = inception_v3(pretrained=False)
 model = EfficientNet.from_pretrained('efficientnet-b6', num_classes=20)
@@ -41,10 +70,10 @@ def validation():
     model.eval()
     validation_loss = 0
     correct = 0
-    for data, target in val_loader:
+    for indata, target in val_loader:
         if use_cuda:
-            data, target = data.cuda(), target.cuda()
-        output = model(data)
+            indata, target = indata.cuda(), target.cuda()
+        output = model(indata)
         # sum up batch loss
         criterion = torch.nn.CrossEntropyLoss(reduction='mean')
         validation_loss += criterion(output, target).data.item()

@@ -17,6 +17,9 @@ import cv2
 parser = argparse.ArgumentParser(description='RecVis A3 training script')
 parser.add_argument('--model', type=str, default='inceptionv3_model_13.pth', metavar='D',
                     help="folder where data is located. train_images/ and val_images/ need to be found in the folder")
+parser.add_argument('--model2', type=str, default=None, metavar='D',
+                    help="folder where data is located. train_images/ and val_images/ need to be found in the folder")
+
 parser.add_argument('--dir', type=str, default='bird_dataset', metavar='D',
                     help="folder where data is located. train_images/ and val_images/ need to be found in the folder")
 parser.add_argument('--out', type=str, default='bird_dataset', metavar='D',
@@ -44,6 +47,8 @@ DATA = args.dir
 
 TEST_IMAGES = '/test_images' # '/test_images'
 model_path = args.model
+model_path2 = args.model2
+
 use_cuda = False
 output_folder_pseudo = args.out
 
@@ -68,10 +73,18 @@ if use_cuda:
 else:
   checkpoint = torch.load(model_path, map_location=torch.device('cpu'))
 
+model.load_state_dict(checkpoint) 
+if model_path2:
+  model2 = EfficientNet.from_pretrained('efficientnet-b6', num_classes=20)
+  if use_cuda:
+    checkpoint2 = torch.load(model_path2)
+  else:
+    checkpoint2 = torch.load(model_path2, map_location=torch.device('cpu'))
+  model2.load_state_dict(checkpoint2) 
 
 # model.fc = nn.Linear(2048, 20)
 
-model.load_state_dict(checkpoint) 
+
 
 softmax = torch.nn.Softmax(dim=1)
 
@@ -79,18 +92,49 @@ T = args.temp
 
 if use_cuda:
   model.cuda()
+  if args.model2:
+    model2.cuda()
 def pseudo_annotate():
     model.eval()
+    if args.model2:
+      model2.eval()
     count = 0
+    count0 = 0
+    count2 = 0
+    count_diff = 0
     for data, target in tqdm(loader):
+        if args.model2:
+          print("count0", count0, "count2", count2, "count_diff", count_diff)
         if use_cuda:
-            data, target = data.cuda(), target.cuda()
+            data, target = data.cuda(), target.cuda()       
+        if args.model2:
+          output2 = model2(data)
+          pred2 = output2.data
+          confidence2 = softmax(pred2/T)*100.
+          confidence2, cls2 = confidence2.max(1, keepdim=True)
+
         output = model(data)
-        # get the index of the max log-probability
         pred = output.data
-        confidence = softmax(pred/T)*100.
-        confidence, cls = confidence.max(1, keepdim=True)
-        folder_name = classes_to_names[cls[0].item()]
+        confidence0 = softmax(pred/T)*100.
+        confidence0, cls0 = confidence0.max(1, keepdim=True)
+        if args.model2:
+          if cls0[0].item() != cls2[0].item():
+            count_diff+=1
+          if confidence0[0] > confidence2[0]:
+            print(cls0[0].item(), confidence0[0].item(), ">", confidence2[0].item(), cls2[0].item())
+            confidence = confidence0
+            best_class = cls0[0].item()
+            count0+=1
+          else:
+            print(cls0[0].item(), confidence0[0].item(), "<", confidence2[0].item(), cls2[0].item())
+            confidence = confidence2
+            best_class = cls2[0].item()
+            count2+=1
+        else:
+          confidence = confidence0
+          best_class = cls0[0].item()
+
+        folder_name = classes_to_names[best_class]
 
         os.makedirs(output_folder_pseudo, exist_ok = True)
         os.makedirs(output_folder_pseudo+'/'+ 'train_images'+'/'+ folder_name, exist_ok = True)

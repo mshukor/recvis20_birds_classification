@@ -71,7 +71,7 @@ VALID_IMAGES = '/val_images' #
 VALID = True
 PRETRAIN = False
 
-NEW_EVAL = True
+NEW_EVAL = False
 BALANCE_CLASSES = True
 
 if args.online_da:
@@ -100,6 +100,7 @@ else:
                             transform=data_transforms_train)
   data_orig_val = datasets.ImageFolder(args.data + VALID_IMAGES,
                             transform=data_transforms_val)
+  targets = data_orig.targets
 if args.data_crop:
   data_crop = datasets.ImageFolder(args.data_crop + TRAIN_IMAGES,
                           transform=data_transforms_val)
@@ -147,8 +148,8 @@ if BALANCE_CLASSES:
   sampler = torch.utils.data.WeightedRandomSampler(samples_weight, len(samples_weight))
 
 print(weight)
-classes_to_names = {v: k for k, v in data_old_train.class_to_idx.items()}
-print(classes_to_names)
+# classes_to_names = {v: k for k, v in data_old_train.class_to_idx.items()}
+# print(classes_to_names)
 
 train_loader = torch.utils.data.DataLoader(
     train_data,

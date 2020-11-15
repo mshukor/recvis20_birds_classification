@@ -29,7 +29,7 @@ torch.manual_seed(0)
 
 NEW_EVAL = True
 
-def train_val_dataset(dataset, val_split=0.08):
+def train_val_dataset(dataset, val_split=0.055):
     train_idx, val_idx = train_test_split(list(range(len(dataset))), test_size=val_split)
     datasets = {}
     dataset_train = Subset(dataset, train_idx)

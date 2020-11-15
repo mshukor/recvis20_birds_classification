@@ -29,7 +29,6 @@ class ConcatDataset(torch.utils.data.Dataset):
         self.lengths = [len(d) for d in datasets]
         self.offsets = np.cumsum(self.lengths)
         self.length = np.sum(self.lengths)
-
     def __getitem__(self, index):
         for i, offset in enumerate(self.offsets):
             if index < offset:

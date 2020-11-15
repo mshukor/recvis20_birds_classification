@@ -10,6 +10,9 @@ from adabelief_pytorch import AdaBelief
 from ranger_adabelief import RangerAdaBelief
 from inception import *
 from data import ConcatDataset
+import pretrainedmodels
+from sklearn.model_selection import train_test_split
+import numpy as np
 
 # Training settings
 parser = argparse.ArgumentParser(description='RecVis A3 training script')
@@ -31,7 +34,7 @@ parser.add_argument('--epochs', type=int, default=10, metavar='N',
                     help='number of epochs to train (default: 10)')
 parser.add_argument('--lr', type=float, default=0.1, metavar='LR',
                     help='learning rate (default: 0.01)')
-parser.add_argument('--momentum', type=float, default=0.5, metavar='M',
+parser.add_argument('--momentum', type=float, default=0.9, metavar='M',
                     help='SGD momentum (default: 0.5)')
 parser.add_argument('--seed', type=int, default=1, metavar='S',
                     help='random seed (default: 1)')
@@ -61,26 +64,29 @@ if not os.path.isdir(args.experiment):
 
 # Data initialization and loading
 from data import data_transforms_train, data_transforms_val
-MODEL = "EFFICIENT" # EFFICIENT INCEPTION
+MODEL = "EFFICIENT" # EFFICIENT INCEPTION INCEPTIONRESNETV2
 FREEZE = False
 TRAIN_IMAGES = '/train_images' # '/train_images' '/images
 VALID_IMAGES = '/val_images' #
 VALID = True
 PRETRAIN = False
 
+NEW_EVAL = True
+BALANCE_CLASSES = True
+
 if args.online_da:
   train_transform = data_transforms_val
 else:
   train_transform = data_transforms_train
-
-NEW_EVAL = True
-
-def train_val_dataset(dataset, val_split=0.08):
+  
+def train_val_dataset(dataset, val_split=0.055):
     train_idx, val_idx = train_test_split(list(range(len(dataset))), test_size=val_split)
     datasets = {}
-    dataset_train = Subset(dataset, train_idx)
-    dataset_val = Subset(dataset, val_idx)
+    dataset_train = torch.utils.data.Subset(dataset, train_idx)
+    dataset_val = torch.utils.data.Subset(dataset, val_idx)
     return dataset_train, dataset_val
+
+
 
 if NEW_EVAL:
   data_old_train = datasets.ImageFolder(args.data + TRAIN_IMAGES, transform=data_transforms_train)
@@ -88,7 +94,7 @@ if NEW_EVAL:
   dataset = ConcatDataset(data_old_train, data_old_val)
   print(len(dataset))
   data_orig, data_orig_val = train_val_dataset(dataset)
-
+  targets = [t[1] for t in tqdm(data_orig)]
 else:
   data_orig = datasets.ImageFolder(args.data + TRAIN_IMAGES,
                             transform=data_transforms_train)
@@ -113,24 +119,41 @@ else:
   data_pseudo = None
 
 
+
+
+
 if args.data_crop and args.data_mask:
-  train_loader = torch.utils.data.DataLoader(
-      ConcatDataset(data_orig, data_crop, data_mask),
-      batch_size=args.batch_size, shuffle=True, num_workers=1)
+  train_data = ConcatDataset(data_orig, data_crop, data_mask)
 
 elif args.data_crop and args.data_pseudo:
-  train_loader = torch.utils.data.DataLoader(
-      ConcatDataset(data_orig, data_crop, data_pseudo),
-      batch_size=args.batch_size, shuffle=True, num_workers=1)
-      
+  train_data = ConcatDataset(data_orig, data_crop, data_pseudo)
+  targets += data_crop.targets
+  targets +=  data_pseudo.targets
+
 elif args.data_crop:
-  train_loader = torch.utils.data.DataLoader(
-      ConcatDataset(data_orig, data_crop),
-      batch_size=args.batch_size, shuffle=True, num_workers=1)
+  train_data = ConcatDataset(data_orig, data_crop)
+  targets += data_crop.targets
 else:
-  train_loader = torch.utils.data.DataLoader(
-      data_orig,
-      batch_size=args.batch_size, shuffle=True, num_workers=1)
+  train_data = data_orig
+
+
+if BALANCE_CLASSES:
+  class_sample_count = torch.unique(torch.from_numpy(np.array(targets)), return_counts=True)[1]
+  print(class_sample_count)
+  weight = 1. / np.array(class_sample_count)
+  samples_weight = np.array([weight[t] for t in targets])
+  samples_weight = torch.from_numpy(samples_weight)
+  samples_weigth = samples_weight.double()
+  sampler = torch.utils.data.WeightedRandomSampler(samples_weight, len(samples_weight))
+
+print(weight)
+classes_to_names = {v: k for k, v in data_old_train.class_to_idx.items()}
+print(classes_to_names)
+
+train_loader = torch.utils.data.DataLoader(
+    train_data,
+    batch_size=args.batch_size, num_workers=1, sampler=sampler) #sampler=sampler
+
 
 if VALID:
   val_loader = torch.utils.data.DataLoader(
@@ -167,8 +190,10 @@ elif MODEL == "INCEPTION":
         if param.requires_grad:
             if name.split(".")[0] not in ["Mixed_6e", "AuxLogits", "Mixed_7a", "Mixed_7b", "Mixed_7c", "fc"]:
               param.requires_grad = False
-
-
+elif MODEL == "INCEPTIONRESNETV2":
+  model_name = 'inceptionresnetv2' # could be fbresnet152 or inceptionresnetv2
+  model = pretrainedmodels.__dict__[model_name](num_classes=1000, pretrained='imagenet')
+  model.last_linear = nn.Linear(1536, args.num_classes, bias = True)
 if args.model:
     print("loading pretrained model")
     checkpoint = torch.load(args.model)
@@ -183,12 +208,15 @@ else:
     print('Using CPU')
 
 # optimizer = optim.Adam(model.parameters(), lr=args.lr) #momentum=args.momentum
-# optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum) #momentum=args.momentum
+
+optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum) #momentum=args.momentum
+lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, args.epochs)
+
 # optimizer = AdaBelief(model.parameters(), lr=args.lr, eps=1e-16, betas=(0.9,0.999), weight_decouple = True, rectify = False)
-optimizer = RangerAdaBelief(model.parameters(), lr=args.lr, eps=1e-12, betas=(0.9,0.999))
+# optimizer = RangerAdaBelief(model.parameters(), lr=args.lr, eps=1e-12, betas=(0.9,0.999))
 # lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, args.epochs)
 def train(epoch):
-    # lr_scheduler.step()
+    lr_scheduler.step()
     model.train()
     for batch_idx, (data, target) in enumerate(train_loader):
         

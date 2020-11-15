@@ -16,6 +16,27 @@ import numpy as np
 import timm
 import torchvision.transforms as transforms
 import bit_torch_models as models
+# from models import EFFICIENT
+import torch.nn.functional as F
+
+class EFFICIENT(nn.Module):
+    def __init__(self, num_classes):
+        super(EFFICIENT, self).__init__()
+        self.model = EfficientNet.from_pretrained('efficientnet-b6', num_classes=512)
+        self.fc1 = nn.Linear(512, 256)
+        self.fc2 = nn.Linear(256, 128)
+        self.classifier = nn.Linear(128, num_classes)
+        self.relu = nn.ReLU()
+        self.dropout = nn.Dropout(0.5)
+    def forward(self, x):
+        out = self.model(x)
+        # out = out.view(x.size(0), -1)
+        out = self.relu (self.fc1(out))
+        out = self.dropout(out)
+        out = self.relu (self.fc2(out))
+        out = self.dropout(out)
+        out = self.classifier(out)
+        return out
 
 # Training settings
 parser = argparse.ArgumentParser(description='RecVis A3 training script')
@@ -67,8 +88,8 @@ if not os.path.isdir(args.experiment):
 
 # Data initialization and loading
 from data import data_transforms_train, data_transforms_val
-MODEL = "VIT" # EFFICIENT INCEPTION INCEPTIONRESNETV2 VIT BIT
-FREEZE = False
+MODEL = "EFFICIENT" # EFFICIENT INCEPTION INCEPTIONRESNETV2 VIT BIT
+FREEZE = True
 TRAIN_IMAGES = '/train_images' # '/train_images' '/images
 VALID_IMAGES = '/val_images' #
 VALID = True
@@ -197,7 +218,14 @@ if MODEL == "EFFICIENT":
     model.load_state_dict(checkpoint) 
     model._fc = nn.Linear(2048, args.num_classes)
   else:
-    model = EfficientNet.from_pretrained('efficientnet-b6', num_classes=args.num_classes)
+    model = EFFICIENT(args.num_classes)
+    # model = EfficientNet.from_pretrained('efficientnet-b6', num_classes=args.num_classes)
+  if FREEZE:
+    for name, param in model.named_parameters():
+      if name == '_blocks.44._bn2.bias':
+        break
+      if param.requires_grad:
+          param.requires_grad = False
 
 elif MODEL == "INCEPTION":
   model = inception_v3(pretrained=False)
@@ -221,7 +249,8 @@ elif MODEL=="VIT":
   model.head = nn.Linear(1024, args.num_classes, bias = True)
 elif MODEL == "BIT":
   model = models.KNOWN_MODELS['BiT-M-R101x1'](head_size= args.num_classes, zero_head=True)
-
+  model.load_from(np.load('BiT-M-R101x1.npz'))
+  
 
 
 if args.model:
@@ -262,6 +291,8 @@ def train(epoch):
       
         criterion = torch.nn.CrossEntropyLoss(reduction='mean')
         loss = criterion(output, target)
+        # loss.requres_grad = True
+
         loss.backward()
         optimizer.step()
         if batch_idx % args.log_interval == 0:

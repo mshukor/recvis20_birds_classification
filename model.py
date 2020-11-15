@@ -20,3 +20,21 @@ class Net(nn.Module):
         x = x.view(-1, 320)
         x = F.relu(self.fc1(x))
         return self.fc2(x)
+
+class EFFICIENT(nn.Module):
+    def __init__(self, num_classes):
+        super(EFFICIENT, self).__init__()
+        self.model = EfficientNet.from_pretrained('efficientnet-b6', num_classes=512)
+        self.fc1 = nn.Linear(512, 256)
+        self.fc2 = nn.Linear(256, 128)
+        self.classifier = nn.Linear(128, num_classes)
+
+    def forward(self, x):
+        out = self.model(x)
+        # out = out.view(x.size(0), -1)
+        out = F.relu(self.fc1(x))
+        out = F.dropout(out, p=0.5, training=self.training)
+        out = F.relu(self.fc2(x))
+        out = F.dropout(out, p=0.5, training=self.training)
+        out = self.classifier(x)
+        return out

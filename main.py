@@ -13,6 +13,9 @@ from data import ConcatDataset
 import pretrainedmodels
 from sklearn.model_selection import train_test_split
 import numpy as np
+import timm
+import torchvision.transforms as transforms
+import bit_torch_models as models
 
 # Training settings
 parser = argparse.ArgumentParser(description='RecVis A3 training script')
@@ -64,7 +67,7 @@ if not os.path.isdir(args.experiment):
 
 # Data initialization and loading
 from data import data_transforms_train, data_transforms_val
-MODEL = "EFFICIENT" # EFFICIENT INCEPTION INCEPTIONRESNETV2
+MODEL = "VIT" # EFFICIENT INCEPTION INCEPTIONRESNETV2 VIT BIT
 FREEZE = False
 TRAIN_IMAGES = '/train_images' # '/train_images' '/images
 VALID_IMAGES = '/val_images' #
@@ -86,6 +89,24 @@ def train_val_dataset(dataset, val_split=0.055):
     dataset_val = torch.utils.data.Subset(dataset, val_idx)
     return dataset_train, dataset_val
 
+if MODEL == "VIT":
+  data_transforms_train = transforms.Compose([
+      transforms.Resize((384, 384)),
+      transforms.ToTensor(),
+      transforms.RandomHorizontalFlip(p=0.5),
+      transforms.RandomRotation(30),
+      transforms.RandomResizedCrop((384, 384)),
+
+      transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                                  std=[0.229, 0.224, 0.225])
+  ])
+
+  data_transforms_val = transforms.Compose([
+    transforms.Resize((384, 384)),
+    transforms.ToTensor(),
+    transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                                 std=[0.229, 0.224, 0.225])
+  ])
 
 
 if NEW_EVAL:
@@ -195,6 +216,14 @@ elif MODEL == "INCEPTIONRESNETV2":
   model_name = 'inceptionresnetv2' # could be fbresnet152 or inceptionresnetv2
   model = pretrainedmodels.__dict__[model_name](num_classes=1000, pretrained='imagenet')
   model.last_linear = nn.Linear(1536, args.num_classes, bias = True)
+elif MODEL=="VIT":
+  model = timm.create_model('vit_large_patch16_384', pretrained=True)
+  model.head = nn.Linear(1024, args.num_classes, bias = True)
+elif MODEL == "BIT":
+  model = models.KNOWN_MODELS['BiT-M-R101x1'](head_size= args.num_classes, zero_head=True)
+
+
+
 if args.model:
     print("loading pretrained model")
     checkpoint = torch.load(args.model)
@@ -210,14 +239,14 @@ else:
 
 # optimizer = optim.Adam(model.parameters(), lr=args.lr) #momentum=args.momentum
 
-optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum) #momentum=args.momentum
-lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, args.epochs)
+# optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum) #momentum=args.momentum
+# lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, args.epochs)
 
 # optimizer = AdaBelief(model.parameters(), lr=args.lr, eps=1e-16, betas=(0.9,0.999), weight_decouple = True, rectify = False)
-# optimizer = RangerAdaBelief(model.parameters(), lr=args.lr, eps=1e-12, betas=(0.9,0.999))
+optimizer = RangerAdaBelief(model.parameters(), lr=args.lr, eps=1e-12, betas=(0.9,0.999))
 # lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, args.epochs)
 def train(epoch):
-    lr_scheduler.step()
+    # lr_scheduler.step()
     model.train()
     for batch_idx, (data, target) in enumerate(train_loader):
         

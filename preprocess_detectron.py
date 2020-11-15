@@ -114,8 +114,8 @@ def detect_birds(model, input_folder, output_folder_crop, generate_masks=False, 
 
 
           # If we are able to detect the bird, enlarge the bounding box and generate a new image
-          x1, y1 = np.maximum(0,int(x1)-20), np.maximum(0,int(y1)-20)
-          x2, y2 = np.minimum(x2+40,img.shape[1]), np.minimum(y2+40,img.shape[0])
+          # x1, y1 = np.maximum(0,int(x1)-20), np.maximum(0,int(y1)-20)
+          # x2, y2 = np.minimum(x2+40,img.shape[1]), np.minimum(y2+40,img.shape[0])
           
           # generate mask
           if generate_masks:

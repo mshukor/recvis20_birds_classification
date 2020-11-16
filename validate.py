@@ -13,11 +13,13 @@ from sklearn.model_selection import train_test_split
 parser = argparse.ArgumentParser(description='RecVis A3 training script')
 parser.add_argument('--model', type=str, default='inceptionv3_model_13.pth', metavar='D',
                     help="folder where data is located. train_images/ and val_images/ need to be found in the folder")
+parser.add_argument('--data', type=str, default='bird_dataset', metavar='D',
+                    help="folder where data is located. train_images/ and val_images/ need to be found in the folder")
 
 args = parser.parse_args()
 
 
-DATA = 'bird_dataset'
+DATA = args.data
 VALID_IMAGES = '/val_images' #
 TRAIN_IMAGES = '/train_images' # '/train_images' '/images
 
@@ -49,7 +51,7 @@ else:
 
 val_loader = torch.utils.data.DataLoader(
     data_val,
-    batch_size=4, shuffle=False, num_workers=1)
+    batch_size=2, shuffle=False, num_workers=1)
 
 
 # model = inception_v3(pretrained=False)

@@ -49,6 +49,8 @@ parser.add_argument('--data-mask', type=str, default=None, metavar='D',
                     help="folder where data is located. train_images/ and val_images/ need to be found in the folder")
 parser.add_argument('--data-pseudo', type=str, default=None, metavar='D',
                     help="folder where data is located. train_images/ and val_images/ need to be found in the folder")
+parser.add_argument('--data-attention', type=str, default=None, metavar='D',
+                    help="folder where data is located. train_images/ and val_images/ need to be found in the folder")
 
 parser.add_argument('--model', type=str, default=None, metavar='D',
                     help="folder where data is located. train_images/ and val_images/ need to be found in the folder")
@@ -89,7 +91,7 @@ if not os.path.isdir(args.experiment):
 
 # Data initialization and loading
 from data import data_transforms_train, data_transforms_val
-MODEL = "MIX" # EFFICIENT INCEPTION INCEPTIONRESNETV2 VIT BIT RESNEXT
+MODEL = "EFFICIENT" # EFFICIENT INCEPTION INCEPTIONRESNETV2 VIT BIT RESNEXT
 FREEZE = True
 TRAIN_IMAGES = '/train_images' # '/train_images' '/images
 VALID_IMAGES = '/val_images' #
@@ -162,7 +164,11 @@ if args.data_pseudo:
 else:
   data_pseudo = None
 
-
+if args.data_attention:
+  data_attention = datasets.ImageFolder(args.data_attention + TRAIN_IMAGES,
+                        transform=data_transforms_val)
+else:
+  data_attention = None
 
 
 
@@ -173,6 +179,11 @@ elif args.data_crop and args.data_pseudo:
   train_data = ConcatDataset(data_orig, data_crop, data_pseudo)
   targets += data_crop.targets
   targets +=  data_pseudo.targets
+
+elif args.data_crop and args.data_attention:
+  train_data = ConcatDataset(data_orig, data_crop, data_attention)
+  targets += data_crop.targets
+  targets +=  data_attention.targets
 
 elif args.data_crop:
   train_data = ConcatDataset(data_orig, data_crop)

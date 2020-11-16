@@ -85,7 +85,7 @@ VALID_IMAGES = '/val_images' #
 VALID = True
 
 num_attentions = 32   
-NET = 'resnet34' #'"inception_mixed_6e" 
+NET = 'inception_mixed_7c' #'"inception_mixed_6e" 
 BETA = 5e-2  
 NEW_EVAL = False
 BALANCE_CLASSES = False

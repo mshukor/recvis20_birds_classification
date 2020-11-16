@@ -89,7 +89,7 @@ if not os.path.isdir(args.experiment):
 
 # Data initialization and loading
 from data import data_transforms_train, data_transforms_val
-MODEL = "EFFICIENT" # EFFICIENT INCEPTION INCEPTIONRESNETV2 VIT BIT RESNEXT
+MODEL = "MIX" # EFFICIENT INCEPTION INCEPTIONRESNETV2 VIT BIT RESNEXT
 FREEZE = True
 TRAIN_IMAGES = '/train_images' # '/train_images' '/images
 VALID_IMAGES = '/val_images' #
@@ -97,7 +97,7 @@ VALID = True
 PRETRAIN = False
 
 NEW_EVAL = False
-BALANCE_CLASSES = True
+BALANCE_CLASSES = False
 
 if args.online_da:
   train_transform = data_transforms_val
@@ -190,13 +190,17 @@ if BALANCE_CLASSES:
   samples_weigth = samples_weight.double()
   sampler = torch.utils.data.WeightedRandomSampler(samples_weight, len(samples_weight))
 
-print(weight)
+  print(weight)
+  shuffle = False
+else:
+  sampler = None
+  shuffle = True
 # classes_to_names = {v: k for k, v in data_old_train.class_to_idx.items()}
 # print(classes_to_names)
 
 train_loader = torch.utils.data.DataLoader(
     train_data,
-    batch_size=args.batch_size, num_workers=1, sampler=sampler) #sampler=sampler
+    batch_size=args.batch_size, num_workers=1, sampler=sampler, shuffle=shuffle) #sampler=sampler
 
 
 if VALID:
@@ -217,7 +221,16 @@ from efficientnet_pytorch import EfficientNet
 if MODEL == "MIX":
     backbone_generalized = EfficientNet.from_pretrained('efficientnet-b6', num_classes=555)
     backbone_specialized = EfficientNet.from_pretrained('efficientnet-b6', num_classes=555)
-    model_head.train() 
+    model_head = nn.Sequential(
+          nn.Linear(555*2, 256),
+          nn.ReLU(),
+          nn.Linear(256, 128),
+          nn.ReLU(),
+          nn.Linear(128, args.num_classes),
+        )
+    for name, param in backbone_generalized.named_parameters():
+      if param.requires_grad:
+          param.requires_grad = False
 
 elif MODEL == "EFFICIENT":
   if PRETRAIN:
@@ -295,18 +308,28 @@ from model import Net
 # model = Net()
 if use_cuda:
     print('Using GPU')
-    model.cuda()
+    if MODEL == "MIX":
+      model_head.cuda()
+      backbone_generalized.cuda()
+      backbone_specialized.cuda()
+    else:
+      model.cuda()
 else:
     print('Using CPU')
 
-# optimizer = optim.Adam(model.parameters(), lr=args.lr) #momentum=args.momentum
+if MODEL == "MIX":
+  optimizer = RangerAdaBelief(list(backbone_specialized.parameters()) + list(model_head.parameters()), lr=args.lr, eps=1e-12, betas=(0.9,0.999))
+else:
+  optimizer = optim.Adam(model.parameters(), lr=args.lr) #momentum=args.momentum
 
-# optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum) #momentum=args.momentum
-# lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, args.epochs)
+  # optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum) #momentum=args.momentum
+  # lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, args.epochs)
 
-# optimizer = AdaBelief(model.parameters(), lr=args.lr, eps=1e-16, betas=(0.9,0.999), weight_decouple = True, rectify = False)
-optimizer = RangerAdaBelief(model.parameters(), lr=args.lr, eps=1e-12, betas=(0.9,0.999))
-# lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, args.epochs)
+  # optimizer = AdaBelief(model.parameters(), lr=args.lr, eps=1e-16, betas=(0.9,0.999), weight_decouple = True, rectify = False)
+  optimizer = RangerAdaBelief(model.parameters(), lr=args.lr, eps=1e-12, betas=(0.9,0.999))
+  # lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, args.epochs)
+
+
 def train(epoch):
     # lr_scheduler.step()
     model.train()
@@ -357,6 +380,37 @@ def validation(val_loader):
     print('\nValidation set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)'.format(
         validation_loss, correct, len(val_loader.dataset),
         100. * correct / len(val_loader.dataset)))
+
+def validation_mix(val_loader):
+    backbone_specialized.eval()
+    backbone_generalized.eval()
+    model_head.eval()
+
+    validation_loss = 0
+    correct = 0
+    for data, target in val_loader:
+        if use_cuda:
+            data, target = data.cuda(), target.cuda()
+
+        general_embedd = backbone_generalized(data)
+        special_embedd = backbone_specialized(data)
+
+        concat_embedd = torch.cat((special_embedd, special_embedd), dim=1)
+        output = model_head(concat_embedd)
+
+
+        # output = model(data)
+        # sum up batch loss
+        criterion = torch.nn.CrossEntropyLoss(reduction='mean')
+        validation_loss += criterion(output, target).data.item()
+        # get the index of the max log-probability
+        pred = output.data.max(1, keepdim=True)[1]
+        correct += pred.eq(target.data.view_as(pred)).cpu().sum()
+
+    validation_loss /= len(val_loader.dataset)
+    print('\nValidation set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)'.format(
+        validation_loss, correct, len(val_loader.dataset),
+        100. * correct / len(val_loader.dataset)))
 def train_mix(epoch):
     # lr_scheduler.step()
     backbone_generalized.train(False)
@@ -376,8 +430,7 @@ def train_mix(epoch):
         special_embedd = backbone_specialized(data)
 
         concat_embedd = torch.cat((special_embedd, special_embedd), dim=1)
-      
-        embedd = model_head(concat_embedd)
+        output = model_head(concat_embedd)
 
         criterion = torch.nn.CrossEntropyLoss(reduction='mean')
         loss = criterion(output, target)
@@ -392,12 +445,30 @@ def train_mix(epoch):
 
 model_name = "/" + args.name
 for epoch in range(1, args.epochs + 1):
-    train(epoch)
+    if MODEL == "MIX":
+      train_mix(epoch)
+    else:
+      train(epoch)
     if VALID:
-      validation(val_loader)
+      if MODEL == "MIX":
+        validation_mix(val_loader)
+      else:
+        validation(val_loader)
       if args.data_crop:
         print("validation on cropped")
-        validation(val_loader_crop)
-    model_file = args.experiment + model_name +  '_model_' + str(epoch) + '.pth'
-    torch.save(model.state_dict(), model_file)
-    print('Saved model to ' + model_file + '. You can run `python evaluate.py --model ' + model_file + '` to generate the Kaggle formatted csv file\n')
+        if MODEL == "MIX":
+          validation_mix(val_loader_crop)
+        else:
+          validation(val_loader_crop)
+    if MODEL == "MIX":
+      model_file_back = args.experiment + model_name +'_back_' + '_model_' + str(epoch) + '.pth'
+      torch.save(backbone_specialized.state_dict(), model_file_back)
+
+      model_file_head = args.experiment + model_name +'_head_' + '_model_' + str(epoch) + '.pth'
+      torch.save(model_head.state_dict(), model_file_head)
+      print('Saved model to ' + model_file_back + '. You can run `python evaluate.py --model ' + model_file_back + '` to generate the Kaggle formatted csv file\n')
+      print('Saved model to ' + model_file_head + '. You can run `python evaluate.py --model ' + model_file_head + '` to generate the Kaggle formatted csv file\n')
+    else:
+      model_file = args.experiment + model_name +  '_model_' + str(epoch) + '.pth'
+      torch.save(model.state_dict(), model_file)
+      print('Saved model to ' + model_file + '. You can run `python evaluate.py --model ' + model_file + '` to generate the Kaggle formatted csv file\n')

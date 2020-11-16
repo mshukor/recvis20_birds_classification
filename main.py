@@ -18,25 +18,26 @@ import torchvision.transforms as transforms
 import bit_torch_models as models
 # from models import EFFICIENT
 import torch.nn.functional as F
+import torchvision
 
-class EFFICIENT(nn.Module):
-    def __init__(self, num_classes):
-        super(EFFICIENT, self).__init__()
-        self.model = EfficientNet.from_pretrained('efficientnet-b6', num_classes=512)
-        self.fc1 = nn.Linear(512, 256)
-        self.fc2 = nn.Linear(256, 128)
-        self.classifier = nn.Linear(128, num_classes)
-        self.relu = nn.ReLU()
-        self.dropout = nn.Dropout(0.5)
-    def forward(self, x):
-        out = self.model(x)
-        # out = out.view(x.size(0), -1)
-        out = self.relu (self.fc1(out))
-        out = self.dropout(out)
-        out = self.relu (self.fc2(out))
-        out = self.dropout(out)
-        out = self.classifier(out)
-        return out
+# class EFFICIENT(nn.Module):
+#     def __init__(self, num_classes):
+#         super(EFFICIENT, self).__init__()
+#         self.model = EfficientNet.from_pretrained('efficientnet-b6', num_classes=512)
+#         self.fc1 = nn.Linear(512, 256)
+#         self.fc2 = nn.Linear(256, 128)
+#         self.classifier = nn.Linear(128, num_classes)
+#         self.relu = nn.ReLU()
+#         self.dropout = nn.Dropout(0.5)
+#     def forward(self, x):
+#         out = self.model(x)
+#         # out = out.view(x.size(0), -1)
+#         out = self.relu (self.fc1(out))
+#         out = self.dropout(out)
+#         out = self.relu (self.fc2(out))
+#         out = self.dropout(out)
+#         out = self.classifier(out)
+#         return out
 
 # Training settings
 parser = argparse.ArgumentParser(description='RecVis A3 training script')
@@ -88,7 +89,7 @@ if not os.path.isdir(args.experiment):
 
 # Data initialization and loading
 from data import data_transforms_train, data_transforms_val
-MODEL = "EFFICIENT" # EFFICIENT INCEPTION INCEPTIONRESNETV2 VIT BIT
+MODEL = "EFFICIENT" # EFFICIENT INCEPTION INCEPTIONRESNETV2 VIT BIT RESNEXT
 FREEZE = True
 TRAIN_IMAGES = '/train_images' # '/train_images' '/images
 VALID_IMAGES = '/val_images' #
@@ -211,18 +212,49 @@ if VALID:
 # Neural network and optimizer
 # We define neural net in model.py so that it can be reused by the evaluate.py script
 from efficientnet_pytorch import EfficientNet
-if MODEL == "EFFICIENT":
+
+
+if MODEL == "MIX":
+    backbone_generalized = EfficientNet.from_pretrained('efficientnet-b6', num_classes=555)
+    backbone_specialized = EfficientNet.from_pretrained('efficientnet-b6', num_classes=555)
+    model_head.train() 
+
+elif MODEL == "EFFICIENT":
   if PRETRAIN:
     model = EfficientNet.from_pretrained('efficientnet-b6', num_classes=555)
     checkpoint = torch.load("experiment/efficient_pretrain_nabirds_model_1.pth")
     model.load_state_dict(checkpoint) 
     model._fc = nn.Linear(2048, args.num_classes)
   else:
-    model = EFFICIENT(args.num_classes)
-    # model = EfficientNet.from_pretrained('efficientnet-b6', num_classes=args.num_classes)
+    # model = EFFICIENT(args.num_classes)
+    model = EfficientNet.from_pretrained('efficientnet-b6', num_classes=args.num_classes)
+  #   model._fc = nn.Sequential(
+  #         nn.Linear(2304, 256),
+  #         nn.ReLU(),
+  #         nn.Linear(256, 128),
+  #         nn.ReLU(),
+  #         nn.Linear(128, args.num_classes),
+  #       )
+
+  # if FREEZE:
+  #   for name, param in model.named_parameters():
+  #     if name == '_blocks.43._bn2.bias':
+  #       break
+  #     if param.requires_grad:
+  #         param.requires_grad = False
+
+elif MODEL == "RESNEXT":
+  model = torchvision.models.resnext50_32x4d(pretrained=True)
+  model.fc = nn.Sequential(
+      nn.Linear(2048, 256),
+      nn.ReLU(),
+      nn.Linear(256, 128),
+      nn.ReLU(),
+      nn.Linear(128, args.num_classes),
+    )
   if FREEZE:
     for name, param in model.named_parameters():
-      if name == '_blocks.44._bn2.bias':
+      if 'fc' in name:
         break
       if param.requires_grad:
           param.requires_grad = False
@@ -253,6 +285,7 @@ elif MODEL == "BIT":
   
 
 
+
 if args.model:
     print("loading pretrained model")
     checkpoint = torch.load(args.model)
@@ -277,6 +310,7 @@ optimizer = RangerAdaBelief(model.parameters(), lr=args.lr, eps=1e-12, betas=(0.
 def train(epoch):
     # lr_scheduler.step()
     model.train()
+    correct = 0
     for batch_idx, (data, target) in enumerate(train_loader):
         
         if target.numpy().any() >= 20 and target.numpy().any() < 0:
@@ -295,6 +329,10 @@ def train(epoch):
 
         loss.backward()
         optimizer.step()
+
+        # pred = output.data.max(1, keepdim=True)[1]
+        # correct += pred.eq(target.data.view_as(pred)).cpu().sum()
+
         if batch_idx % args.log_interval == 0:
             print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
                 epoch, batch_idx * len(data), len(train_loader.dataset),
@@ -319,6 +357,38 @@ def validation(val_loader):
     print('\nValidation set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)'.format(
         validation_loss, correct, len(val_loader.dataset),
         100. * correct / len(val_loader.dataset)))
+def train_mix(epoch):
+    # lr_scheduler.step()
+    backbone_generalized.train(False)
+    backbone_specialized.train()   
+    model_head.train() 
+    for batch_idx, (data, target) in enumerate(train_loader):
+        
+        if target.numpy().any() >= 20 and target.numpy().any() < 0:
+            print(target.numpy())
+            continue
+        if use_cuda:
+            data, target = data.cuda(), target.cuda()
+        optimizer.zero_grad()
+        
+        
+        general_embedd = backbone_generalized(data)
+        special_embedd = backbone_specialized(data)
+
+        concat_embedd = torch.cat((special_embedd, special_embedd), dim=1)
+      
+        embedd = model_head(concat_embedd)
+
+        criterion = torch.nn.CrossEntropyLoss(reduction='mean')
+        loss = criterion(output, target)
+        # loss.requres_grad = True
+
+        loss.backward()
+        optimizer.step()
+        if batch_idx % args.log_interval == 0:
+            print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
+                epoch, batch_idx * len(data), len(train_loader.dataset),
+                100. * batch_idx / len(train_loader), loss.data.item()))
 
 model_name = "/" + args.name
 for epoch in range(1, args.epochs + 1):

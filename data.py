@@ -6,6 +6,7 @@ import numpy as np
 from PIL import Image
 import torchvision
 from torchvision import datasets
+from randaugment import RandAugmentMC
 
 data_transforms_train = transforms.Compose([
     transforms.Resize((456, 456)),
@@ -86,8 +87,8 @@ class DoubleChannels(torch.utils.data.Dataset):
 
 
 class TripleChannels(torch.utils.data.Dataset):
-  def __init__(self, dataset_path, concat_dataset_path, concat_dataset_path_2, transform=None):
-
+  def __init__(self, dataset_path, concat_dataset_path, concat_dataset_path_2, transform=None, same=False):
+      self.same = same
       self.dataset_path = dataset_path
       self.concat_dataset_path = concat_dataset_path
       self.concat_dataset_path_2 = concat_dataset_path_2
@@ -121,10 +122,13 @@ class TripleChannels(torch.utils.data.Dataset):
 
         path_image, target_image = self.samples_images[index]
         concat_index = np.random.choice(self.orig_to_concat[target_image][0], 1)
-        path_image_concat, target_image_concat = self.samples_image_concat[concat_index[0]]
- 
         concat_index_2 = np.random.choice(self.orig_to_concat_2[target_image][0], 1)
-        path_image_concat_2, target_image_concat_2 = self.samples_image_concat_2[concat_index_2[0]]
+        if self.same:
+          path_image_concat = path_image.replace(self.dataset_path, self.concat_dataset_path)
+          path_image_concat_2 = path_image.replace(self.dataset_path, self.concat_dataset_path_2)
+        else:
+          path_image_concat, target_image_concat = self.samples_image_concat[concat_index[0]]
+          path_image_concat_2, target_image_concat_2 = self.samples_image_concat_2[concat_index_2[0]]
 
         sample_image =Image.open(path_image)
         sample_image_concat = Image.open(path_image_concat)
@@ -139,19 +143,21 @@ class TripleChannels(torch.utils.data.Dataset):
 
         return sample, target_image
 
-
+    
 
 
 class TransformFixMatch(object):
     def __init__(self, ):
         self.weak = transforms.Compose([
+            transforms.Resize((456, 456)),
             transforms.RandomHorizontalFlip(),
-            transforms.RandomCrop(size=32,
+            transforms.RandomCrop(size=456,
                                   padding=int(32*0.125),
                                   padding_mode='reflect')])
         self.strong = transforms.Compose([
+            transforms.Resize((456, 456)),
             transforms.RandomHorizontalFlip(),
-            transforms.RandomCrop(size=32,
+            transforms.RandomCrop(size=456,
                                   padding=int(32*0.125),
                                   padding_mode='reflect'),
             RandAugmentMC(n=2, m=10)])

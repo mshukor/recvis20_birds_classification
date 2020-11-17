@@ -36,7 +36,7 @@ use_cuda = True
 
 torch.manual_seed(0)
 
-NEW_EVAL = True
+NEW_EVAL = False
 
 def train_val_dataset(dataset, val_split=0.055):
     train_idx, val_idx = train_test_split(list(range(len(dataset))), test_size=val_split)
@@ -56,7 +56,9 @@ else:
   data_val = datasets.ImageFolder(DATA+ VALID_IMAGES,
                         transform=data_transforms_val)
 
-data_combined_val = TripleChannels(args.data + VALID_IMAGES, args.data_crop + VALID_IMAGES, args.data_attention + TRAIN_IMAGES, transform = data_transforms_val)
+data_combined_val = TripleChannels(args.data + VALID_IMAGES, args.data_crop + VALID_IMAGES, 
+args.data_attention + VALID_IMAGES, transform = data_transforms_val, same = True)
+
 val_loader = torch.utils.data.DataLoader(
       data_combined_val,
       batch_size=2, shuffle=False, num_workers=1)
@@ -68,8 +70,7 @@ val_loader = torch.utils.data.DataLoader(
 
 
 # model = inception_v3(pretrained=False)
-model = EfficientNet.from_pretrained('efficientnet-b6', num_classes=args.num_classes)
-
+model = EfficientNet.from_pretrained('efficientnet-b6', num_classes=20)
 if CHANNELS == "DOUBLE":
   model._conv_stem = Conv2dStaticSamePadding(in_channels=3*2, out_channels=56, kernel_size=(3, 3), stride=2, image_size=(456, 456))
 if CHANNELS == "TRIPLE":

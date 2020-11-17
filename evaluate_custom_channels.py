@@ -8,6 +8,7 @@ from inception import *
 
 from model import Net
 import torch.nn as nn
+from efficientnet_pytorch.utils import Conv2dStaticSamePadding
 
 parser = argparse.ArgumentParser(description='RecVis A3 evaluation script')
 parser.add_argument('--data', type=str, default='bird_dataset', metavar='D',
@@ -16,6 +17,9 @@ parser.add_argument('--data-crop', type=str, default='bird_dataset', metavar='D'
                     help="folder where data is located. test_images/ need to be found in the folder")
 parser.add_argument('--data-attention', type=str, default='bird_dataset', metavar='D',
                     help="folder where data is located. test_images/ need to be found in the folder")                    
+parser.add_argument('--data-mask', type=str, default='bird_dataset', metavar='D',
+                    help="folder where data is located. test_images/ need to be found in the folder")                    
+
 parser.add_argument('--model', type=str, metavar='M',
                     help="the model file to be evaluated. Usually it is of the form model_X.pth")
 parser.add_argument('--outfile', type=str, default='experiment/kaggle.csv', metavar='D',
@@ -57,8 +61,10 @@ else:
 from data import data_transforms_val
 
 test_dir = args.data + '/test_images/mistery_category'
-test_dir_crop = args.data + '/test_images/mistery_category'
-test_dir_attention = args.data + '/test_images/mistery_category'
+test_dir_crop = args.data_crop + '/test_images/mistery_category'
+test_dir_attention = args.data_attention + '/test_images/mistery_category'
+test_dir_mask = args.data_mask + '/test_images/mistery_category'
+
 
 def pil_loader(path):
     # open path as file to avoid ResourceWarning (https://github.com/python-pillow/Pillow/issues/835)
@@ -72,16 +78,24 @@ output_file.write("Id,Category\n")
 for f in tqdm(os.listdir(test_dir)):
     if 'jpg' in f:
         data = data_transforms(pil_loader(test_dir + '/' + f))
-        data = data.view(1, data.size(0), data.size(1), data.size(2))
+        # data = data.view(1, data.size(0), data.size(1), data.size(2))
 
-        data_crop = data_transforms(pil_loader(test_dir_crop + '/' + f))
-        data_crop = data_crop.view(1, data.size(0), data.size(1), data.size(2))
+        try:
+          data_mask = data_transforms(pil_loader(test_dir_mask + '/' + f))
+          # data_mask = data_mask.view(1, data.size(0), data.size(1), data.size(2))
+        except FileNotFoundError:
+          data_mask = data
+        try:
+          data_crop = data_transforms(pil_loader(test_dir_crop + '/' + f))
+        # data_crop = data_crop.view(1, data.size(0), data.size(1), data.size(2))
+        except FileNotFoundError:
+          data_crop = data
 
         data_attention = data_transforms(pil_loader(test_dir_attention + '/' + f))
-        data_attention = data_attention.view(1, data.size(0), data.size(1), data.size(2))
+        # data_attention = data_attention.view(1, data.size(0), data.size(1), data.size(2))
 
-        sample = torch.cat((data, data_crop, data_attention), dim=0)
-
+        sample = torch.cat((data_mask, data_mask, data_attention), dim=0)
+        sample.unsqueeze_(0)
         if use_cuda:
             sample = sample.cuda()
         output = model(sample)

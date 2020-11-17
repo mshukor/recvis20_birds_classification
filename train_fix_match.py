@@ -36,6 +36,8 @@ parser.add_argument('--data-pseudo', type=str, default=None, metavar='D',
                     help="folder where data is located. train_images/ and val_images/ need to be found in the folder")
 parser.add_argument('--data-attention', type=str, default=None, metavar='D',
                     help="folder where data is located. train_images/ and val_images/ need to be found in the folder")
+parser.add_argument('--data-no-label', type=str, default=None, metavar='D',
+                    help="folder where data is located. train_images/ and val_images/ need to be found in the folder")
 
 parser.add_argument('--model', type=str, default=None, metavar='D',
                     help="folder where data is located. train_images/ and val_images/ need to be found in the folder")
@@ -70,16 +72,17 @@ parser.add_argument('--use-ema', action='store_true', default=True,
                     help='use EMA model')
 parser.add_argument('--ema-decay', default=0.999, type=float,
                     help='EMA decay rate')
-parser.add_argument('--mu', default=7, type=int,
+parser.add_argument('--mu', default=4, type=int,
                     help='coefficient of unlabeled batch size')
 parser.add_argument('--lambda-u', default=1, type=float,
                     help='coefficient of unlabeled loss')
-parser.add_argument('--T', default=1, type=float,
+parser.add_argument('--T', default=1.5, type=float,
                     help='pseudo label temperature')
-parser.add_argument('--threshold', default=0.95, type=float,
+parser.add_argument('--threshold', default=0.9, type=float,
                     help='pseudo label threshold')
-
-
+parser.add_argument('--batch-size-u', default=2, type=int,
+                    help='pseudo label threshold')
+parser.add_argument('--test', default=False, type=bool, help='testing')
 
 
 
@@ -101,6 +104,7 @@ MODEL = "EFFICIENT" # EFFICIENT INCEPTION INCEPTIONRESNETV2 VIT BIT RESNEXT
 FREEZE = True
 TRAIN_IMAGES = '/train_images' # '/train_images' '/images
 VALID_IMAGES = '/val_images' #
+TEST_IMAGES = '/test_images'
 VALID = True
 PRETRAIN = False
 CHANNELS = "SINGLE" # "TRIPLE" DOUBLE SINGLE
@@ -185,7 +189,7 @@ else:
     data_attention = None
 
   if args.data_no_label:
-    data_no_label = datasets.ImageFolder(args.data_no_label + TRAIN_IMAGES,
+    data_no_label = datasets.ImageFolder(args.data_no_label + TEST_IMAGES,
                           transform=TransformFixMatch())
   else:
     data_no_label = None
@@ -243,7 +247,7 @@ else:
   if FIX_MATCH:
     train_no_label_loader = torch.utils.data.DataLoader(
         data_no_label,
-        batch_size=args.batch_size, num_workers=1, sampler=sampler, shuffle=shuffle) #sampler=sampler
+        batch_size=args.batch_size_u, num_workers=1, sampler=sampler, shuffle=shuffle) #sampler=sampler
 
   if VALID:
     val_loader = torch.utils.data.DataLoader(
@@ -493,15 +497,6 @@ def train_mix(epoch):
                 epoch, batch_idx * len(data), len(train_loader.dataset),
                 100. * batch_idx / len(train_loader), loss.data.item()))
 
-def interleave(x, size):
-    s = list(x.shape)
-    return x.reshape([-1, size] + s[1:]).transpose(0, 1).reshape([-1] + s[1:])
-
-
-def de_interleave(x, size):
-    s = list(x.shape)
-    return x.reshape([size, -1] + s[1:]).transpose(0, 1).reshape([-1] + s[1:])
-
 
 model_name = "/" + args.name
 
@@ -540,6 +535,17 @@ if FIX_MATCH:
 
 # https://github.com/kekmodel/FixMatch-pytorch/blob/master/train.py
 
+device = torch.device('cuda')
+
+def interleave(x, size):
+    s = list(x.shape)
+    return x.reshape([-1, size] + s[1:]).transpose(0, 1).reshape([-1] + s[1:])
+
+
+def de_interleave(x, size):
+    s = list(x.shape)
+    return x.reshape([size, -1] + s[1:]).transpose(0, 1).reshape([-1] + s[1:])
+
 
 for epoch in range(1, args.epochs + 1):
 
@@ -558,12 +564,15 @@ for epoch in range(1, args.epochs + 1):
 
       batch_size = inputs_x.shape[0]
       inputs = interleave(
-          torch.cat((inputs_x, inputs_u_w, inputs_u_s)), 2*args.mu+1).to(args.device)
-      targets_x = targets_x.to(args.device)
+          torch.cat((inputs_x, inputs_u_w, inputs_u_s)), 2*args.mu+1).to(device)
+
+      # inputs = torch.cat((inputs_x, inputs_u_w, inputs_u_s)).to(device)
+      targets_x = targets_x.to(device)
       logits = model(inputs)
-      logits = de_interleave(logits, 2*args.mu+1)
+      logits = de_interleave(logits, 2*args.batch_size_u+1)
       logits_x = logits[:batch_size]
       logits_u_w, logits_u_s = logits[batch_size:].chunk(2)
+    
       del logits
 
       Lx = F.cross_entropy(logits_x, targets_x, reduction='mean')
@@ -571,7 +580,6 @@ for epoch in range(1, args.epochs + 1):
       pseudo_label = torch.softmax(logits_u_w.detach_()/args.T, dim=-1)
       max_probs, targets_u = torch.max(pseudo_label, dim=-1)
       mask = max_probs.ge(args.threshold).float()
-
       Lu = (F.cross_entropy(logits_u_s, targets_u,
                             reduction='none') * mask).mean()
 
@@ -584,7 +592,15 @@ for epoch in range(1, args.epochs + 1):
       # scheduler.step()
    
       model.zero_grad()
+      if batch_idx % args.log_interval == 0:
+        print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f} \tLoss_x: {:.6f} \tLoss_u: {:.6f} '.format(
+            epoch, batch_idx , args.eval_step,
+            100. * batch_idx / len(train_loader), loss.data.item(), Lx.data.item(), Lu.data.item()))
 
-
+  validation(val_loader)
+  if not args.test:
+    model_file = args.experiment + model_name +  '_model_' + str(epoch) + '.pth'
+    torch.save(model.state_dict(), model_file)
+    print('Saved model to ' + model_file + '. You can run `python evaluate.py --model ' + model_file + '` to generate the Kaggle formatted csv file\n')
 
 

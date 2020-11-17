@@ -29,7 +29,7 @@ use_cuda = True
 
 torch.manual_seed(0)
 
-NEW_EVAL = True
+NEW_EVAL = False
 
 def train_val_dataset(dataset, val_split=0.055):
     train_idx, val_idx = train_test_split(list(range(len(dataset))), test_size=val_split)

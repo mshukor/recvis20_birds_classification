@@ -376,11 +376,11 @@ if MODEL == "MIX":
 else:
   optimizer = optim.Adam(model.parameters(), lr=args.lr) #momentum=args.momentum
 
-  # optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum) #momentum=args.momentum
-  # lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, args.epochs)
+  optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum) #momentum=args.momentum
+  lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, args.epochs)
 
   # optimizer = AdaBelief(model.parameters(), lr=args.lr, eps=1e-16, betas=(0.9,0.999), weight_decouple = True, rectify = False)
-  optimizer = RangerAdaBelief(model.parameters(), lr=args.lr, eps=1e-12, betas=(0.9,0.999))
+  # optimizer = RangerAdaBelief(model.parameters(), lr=args.lr, eps=1e-12, betas=(0.9,0.999))
   # lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, args.epochs)
 
 
@@ -537,6 +537,7 @@ if FIX_MATCH:
 
 device = torch.device('cuda')
 
+print("train_loader size = ", len(train_loader))
 def interleave(x, size):
     s = list(x.shape)
     return x.reshape([-1, size] + s[1:]).transpose(0, 1).reshape([-1] + s[1:])
@@ -548,28 +549,29 @@ def de_interleave(x, size):
 
 
 for epoch in range(1, args.epochs + 1):
-
+  lr_scheduler.step()
   for batch_idx in range(args.eval_step):
       try:
           inputs_x, targets_x = labeled_iter.next()
       except:
-          labeled_iter = iter(labeled_trainloader)
+          labeled_iter = iter(train_loader)
           inputs_x, targets_x = labeled_iter.next()
 
       try:
           (inputs_u_w, inputs_u_s), _ = unlabeled_iter.next()
       except:
-          unlabeled_iter = iter(unlabeled_trainloader)
+          unlabeled_iter = iter(train_no_label_loader)
           (inputs_u_w, inputs_u_s), _ = unlabeled_iter.next()
 
+      optimizer.zero_grad()
       batch_size = inputs_x.shape[0]
-      inputs = interleave(
-          torch.cat((inputs_x, inputs_u_w, inputs_u_s)), 2*args.mu+1).to(device)
+      # inputs = interleave(
+      #     torch.cat((inputs_x, inputs_u_w, inputs_u_s)), 2*args.batch_size_u+1).to(device)
 
-      # inputs = torch.cat((inputs_x, inputs_u_w, inputs_u_s)).to(device)
+      inputs = torch.cat((inputs_x, inputs_u_w, inputs_u_s)).to(device)
       targets_x = targets_x.to(device)
       logits = model(inputs)
-      logits = de_interleave(logits, 2*args.batch_size_u+1)
+      # logits = de_interleave(logits, 2*args.batch_size_u+1)
       logits_x = logits[:batch_size]
       logits_u_w, logits_u_s = logits[batch_size:].chunk(2)
     

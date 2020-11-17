@@ -22,25 +22,7 @@ import torchvision
 from data import DoubleChannels, TripleChannels
 from efficientnet_pytorch import EfficientNet
 from efficientnet_pytorch.utils import Conv2dStaticSamePadding
-
-# class EFFICIENT(nn.Module):
-#     def __init__(self, num_classes):
-#         super(EFFICIENT, self).__init__()
-#         self.model = EfficientNet.from_pretrained('efficientnet-b6', num_classes=512)
-#         self.fc1 = nn.Linear(512, 256)
-#         self.fc2 = nn.Linear(256, 128)
-#         self.classifier = nn.Linear(128, num_classes)
-#         self.relu = nn.ReLU()
-#         self.dropout = nn.Dropout(0.5)
-#     def forward(self, x):
-#         out = self.model(x)
-#         # out = out.view(x.size(0), -1)
-#         out = self.relu (self.fc1(out))
-#         out = self.dropout(out)
-#         out = self.relu (self.fc2(out))
-#         out = self.dropout(out)
-#         out = self.classifier(out)
-#         return out
+from data import TransformFixMatch
 
 # Training settings
 parser = argparse.ArgumentParser(description='RecVis A3 training script')
@@ -81,6 +63,27 @@ parser.add_argument('--online_da', type=bool, default=True, metavar='N',
 # parser.add_argument('--merged', type=bool, default=False, metavar='N',
 #                     help='use several datasets')
 
+# fix match 
+parser.add_argument('--eval-step', default=1024, type=int,
+                    help='number of eval steps to run')
+parser.add_argument('--use-ema', action='store_true', default=True,
+                    help='use EMA model')
+parser.add_argument('--ema-decay', default=0.999, type=float,
+                    help='EMA decay rate')
+parser.add_argument('--mu', default=7, type=int,
+                    help='coefficient of unlabeled batch size')
+parser.add_argument('--lambda-u', default=1, type=float,
+                    help='coefficient of unlabeled loss')
+parser.add_argument('--T', default=1, type=float,
+                    help='pseudo label temperature')
+parser.add_argument('--threshold', default=0.95, type=float,
+                    help='pseudo label threshold')
+
+
+
+
+
+
 
 args = parser.parse_args()
 use_cuda = torch.cuda.is_available()
@@ -100,10 +103,10 @@ TRAIN_IMAGES = '/train_images' # '/train_images' '/images
 VALID_IMAGES = '/val_images' #
 VALID = True
 PRETRAIN = False
-CHANNELS = "TRIPLE" # "TRIPLE"
+CHANNELS = "SINGLE" # "TRIPLE" DOUBLE SINGLE
 NEW_EVAL = False
 BALANCE_CLASSES = False
-
+FIX_MATCH = True
 if args.online_da:
   train_transform = data_transforms_val
 else:
@@ -176,11 +179,16 @@ else:
     data_pseudo = None
 
   if args.data_attention:
-    data_attention = datasets.ImageFolder(args.data_attention + TRAIN_IMAGES,
+    data_attention = datasets.ImageFolder(args.data_attention + "/test_images",
                           transform=data_transforms_val)
   else:
     data_attention = None
 
+  if args.data_no_label:
+    data_no_label = datasets.ImageFolder(args.data_no_label + TRAIN_IMAGES,
+                          transform=TransformFixMatch())
+  else:
+    data_no_label = None
 
 
 if CHANNELS != "DOUBLE" and CHANNELS != "TRIPLE":
@@ -232,6 +240,11 @@ else:
   train_loader = torch.utils.data.DataLoader(
       train_data,
       batch_size=args.batch_size, num_workers=1, sampler=sampler, shuffle=shuffle) #sampler=sampler
+  if FIX_MATCH:
+    train_no_label_loader = torch.utils.data.DataLoader(
+        data_no_label,
+        batch_size=args.batch_size, num_workers=1, sampler=sampler, shuffle=shuffle) #sampler=sampler
+
   if VALID:
     val_loader = torch.utils.data.DataLoader(
         data_orig_val,
@@ -337,15 +350,12 @@ elif MODEL == "BIT":
   
 
 print("USING : ", CHANNELS)
-print("CHECK", model._conv_stem)
 
 if args.model and CHANNELS != 'TRIPLE' and CHANNELS != 'DOUBLE':
     print("loading pretrained model")
     checkpoint = torch.load(args.model)
     model.load_state_dict(checkpoint) 
  
-from model import Net
-# model = Net()
 if use_cuda:
     print('Using GPU')
     if MODEL == "MIX":
@@ -483,32 +493,98 @@ def train_mix(epoch):
                 epoch, batch_idx * len(data), len(train_loader.dataset),
                 100. * batch_idx / len(train_loader), loss.data.item()))
 
-model_name = "/" + args.name
-for epoch in range(1, args.epochs + 1):
-    if MODEL == "MIX":
-      train_mix(epoch)
-    else:
-      train(epoch)
-    if VALID:
-      if MODEL == "MIX":
-        validation_mix(val_loader)
-      else:
-        validation(val_loader)
-      if args.data_crop and CHANNELS != "DOUBLE" and CHANNELS != "TRIPLE":
-        print("validation on cropped")
-        if MODEL == "MIX":
-          validation_mix(val_loader_crop)
-        else:
-          validation(val_loader_crop)
-    if MODEL == "MIX":
-      model_file_back = args.experiment + model_name +'_back_' + '_model_' + str(epoch) + '.pth'
-      torch.save(backbone_specialized.state_dict(), model_file_back)
+def interleave(x, size):
+    s = list(x.shape)
+    return x.reshape([-1, size] + s[1:]).transpose(0, 1).reshape([-1] + s[1:])
 
-      model_file_head = args.experiment + model_name +'_head_' + '_model_' + str(epoch) + '.pth'
-      torch.save(model_head.state_dict(), model_file_head)
-      print('Saved model to ' + model_file_back + '. You can run `python evaluate.py --model ' + model_file_back + '` to generate the Kaggle formatted csv file\n')
-      print('Saved model to ' + model_file_head + '. You can run `python evaluate.py --model ' + model_file_head + '` to generate the Kaggle formatted csv file\n')
-    else:
-      model_file = args.experiment + model_name +  '_model_' + str(epoch) + '.pth'
-      torch.save(model.state_dict(), model_file)
-      print('Saved model to ' + model_file + '. You can run `python evaluate.py --model ' + model_file + '` to generate the Kaggle formatted csv file\n')
+
+def de_interleave(x, size):
+    s = list(x.shape)
+    return x.reshape([size, -1] + s[1:]).transpose(0, 1).reshape([-1] + s[1:])
+
+
+model_name = "/" + args.name
+
+if FIX_MATCH:
+    labeled_iter = iter(train_loader)
+    unlabeled_iter = iter(train_no_label_loader)
+
+# for epoch in range(1, args.epochs + 1):
+#     if MODEL == "MIX":
+#       train_mix(epoch)
+#     else:
+#       train(epoch)
+#     if VALID:
+#       if MODEL == "MIX":
+#         validation_mix(val_loader)
+#       else:
+#         validation(val_loader)
+#       if args.data_crop and CHANNELS != "DOUBLE" and CHANNELS != "TRIPLE":
+#         print("validation on cropped")
+#         if MODEL == "MIX":
+#           validation_mix(val_loader_crop)
+#         else:
+#           validation(val_loader_crop)
+#     if MODEL == "MIX":
+#       model_file_back = args.experiment + model_name +'_back_' + '_model_' + str(epoch) + '.pth'
+#       torch.save(backbone_specialized.state_dict(), model_file_back)
+
+#       model_file_head = args.experiment + model_name +'_head_' + '_model_' + str(epoch) + '.pth'
+#       torch.save(model_head.state_dict(), model_file_head)
+#       print('Saved model to ' + model_file_back + '. You can run `python evaluate.py --model ' + model_file_back + '` to generate the Kaggle formatted csv file\n')
+#       print('Saved model to ' + model_file_head + '. You can run `python evaluate.py --model ' + model_file_head + '` to generate the Kaggle formatted csv file\n')
+#     else:
+#       model_file = args.experiment + model_name +  '_model_' + str(epoch) + '.pth'
+#       torch.save(model.state_dict(), model_file)
+#       print('Saved model to ' + model_file + '. You can run `python evaluate.py --model ' + model_file + '` to generate the Kaggle formatted csv file\n')
+
+# https://github.com/kekmodel/FixMatch-pytorch/blob/master/train.py
+
+
+for epoch in range(1, args.epochs + 1):
+
+  for batch_idx in range(args.eval_step):
+      try:
+          inputs_x, targets_x = labeled_iter.next()
+      except:
+          labeled_iter = iter(labeled_trainloader)
+          inputs_x, targets_x = labeled_iter.next()
+
+      try:
+          (inputs_u_w, inputs_u_s), _ = unlabeled_iter.next()
+      except:
+          unlabeled_iter = iter(unlabeled_trainloader)
+          (inputs_u_w, inputs_u_s), _ = unlabeled_iter.next()
+
+      batch_size = inputs_x.shape[0]
+      inputs = interleave(
+          torch.cat((inputs_x, inputs_u_w, inputs_u_s)), 2*args.mu+1).to(args.device)
+      targets_x = targets_x.to(args.device)
+      logits = model(inputs)
+      logits = de_interleave(logits, 2*args.mu+1)
+      logits_x = logits[:batch_size]
+      logits_u_w, logits_u_s = logits[batch_size:].chunk(2)
+      del logits
+
+      Lx = F.cross_entropy(logits_x, targets_x, reduction='mean')
+
+      pseudo_label = torch.softmax(logits_u_w.detach_()/args.T, dim=-1)
+      max_probs, targets_u = torch.max(pseudo_label, dim=-1)
+      mask = max_probs.ge(args.threshold).float()
+
+      Lu = (F.cross_entropy(logits_u_s, targets_u,
+                            reduction='none') * mask).mean()
+
+      loss = Lx + args.lambda_u * Lu
+
+ 
+      loss.backward()
+
+      optimizer.step()
+      # scheduler.step()
+   
+      model.zero_grad()
+
+
+
+

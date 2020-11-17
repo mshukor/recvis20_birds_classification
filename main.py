@@ -19,6 +19,9 @@ import bit_torch_models as models
 # from models import EFFICIENT
 import torch.nn.functional as F
 import torchvision
+from data import DoubleChannels, TripleChannels
+from efficientnet_pytorch import EfficientNet
+from efficientnet_pytorch.utils import Conv2dStaticSamePadding
 
 # class EFFICIENT(nn.Module):
 #     def __init__(self, num_classes):
@@ -97,7 +100,7 @@ TRAIN_IMAGES = '/train_images' # '/train_images' '/images
 VALID_IMAGES = '/val_images' #
 VALID = True
 PRETRAIN = False
-
+CHANNELS = "DOUBLE" # "TRIPLE"
 NEW_EVAL = False
 BALANCE_CLASSES = False
 
@@ -146,50 +149,59 @@ else:
   data_orig_val = datasets.ImageFolder(args.data + VALID_IMAGES,
                             transform=data_transforms_val)
   targets = data_orig.targets
-if args.data_crop:
-  data_crop = datasets.ImageFolder(args.data_crop + TRAIN_IMAGES,
+if CHANNELS == "DOUBLE":
+  data_combined = DoubleChannels(args.data + TRAIN_IMAGES, args.data_crop + TRAIN_IMAGES, transform = data_transforms_val)
+  data_combined_val = DoubleChannels(args.data + VALID_IMAGES, args.data_crop + VALID_IMAGES, transform = data_transforms_val)
+elif CHANNELS == "TRIPLE":
+  data_combined = DoubleChannels(args.data + TRAIN_IMAGES, args.data_crop + TRAIN_IMAGES, args.data_attention + TRAIN_IMAGES, transform = data_transforms_val)
+  data_combined_val = DoubleChannels(args.data + VALID_IMAGES, args.data_crop + VALID_IMAGES, args.data_attention + TRAIN_IMAGES, transform = data_transforms_val)
+
+else:
+  if args.data_crop:
+    data_crop = datasets.ImageFolder(args.data_crop + TRAIN_IMAGES,
+                            transform=data_transforms_val)
+  else:
+    data_crop = None
+
+  if args.data_mask:
+    data_mask = datasets.ImageFolder(args.data_mask + TRAIN_IMAGES,
                           transform=data_transforms_val)
-else:
-  data_crop = None
+  else:
+    data_mask = None
 
-if args.data_mask:
-  data_mask = datasets.ImageFolder(args.data_mask + TRAIN_IMAGES,
-                        transform=data_transforms_val)
-else:
-  data_mask = None
+  if args.data_pseudo:
+    data_pseudo = datasets.ImageFolder(args.data_pseudo + TRAIN_IMAGES,
+                          transform=data_transforms_val)
+  else:
+    data_pseudo = None
 
-if args.data_pseudo:
-  data_pseudo = datasets.ImageFolder(args.data_pseudo + TRAIN_IMAGES,
-                        transform=data_transforms_val)
-else:
-  data_pseudo = None
-
-if args.data_attention:
-  data_attention = datasets.ImageFolder(args.data_attention + TRAIN_IMAGES,
-                        transform=data_transforms_val)
-else:
-  data_attention = None
+  if args.data_attention:
+    data_attention = datasets.ImageFolder(args.data_attention + TRAIN_IMAGES,
+                          transform=data_transforms_val)
+  else:
+    data_attention = None
 
 
 
-if args.data_crop and args.data_mask:
-  train_data = ConcatDataset(data_orig, data_crop, data_mask)
+if CHANNELS != "DOUBLE":
+  if args.data_crop and args.data_mask:
+    train_data = ConcatDataset(data_orig, data_crop, data_mask)
 
-elif args.data_crop and args.data_pseudo:
-  train_data = ConcatDataset(data_orig, data_crop, data_pseudo)
-  targets += data_crop.targets
-  targets +=  data_pseudo.targets
+  elif args.data_crop and args.data_pseudo:
+    train_data = ConcatDataset(data_orig, data_crop, data_pseudo)
+    targets += data_crop.targets
+    targets +=  data_pseudo.targets
 
-elif args.data_crop and args.data_attention:
-  train_data = ConcatDataset(data_orig, data_crop, data_attention)
-  targets += data_crop.targets
-  targets +=  data_attention.targets
+  elif args.data_crop and args.data_attention:
+    train_data = ConcatDataset(data_orig, data_crop, data_attention)
+    targets += data_crop.targets
+    targets +=  data_attention.targets
 
-elif args.data_crop:
-  train_data = ConcatDataset(data_orig, data_crop)
-  targets += data_crop.targets
-else:
-  train_data = data_orig
+  elif args.data_crop:
+    train_data = ConcatDataset(data_orig, data_crop)
+    targets += data_crop.targets
+  else:
+    train_data = data_orig
 
 
 if BALANCE_CLASSES:
@@ -208,25 +220,30 @@ else:
   shuffle = True
 # classes_to_names = {v: k for k, v in data_old_train.class_to_idx.items()}
 # print(classes_to_names)
+if CHANNELS == "DOUBLE" or CHANNELS == "TRIPLE":
+  train_loader = torch.utils.data.DataLoader(
+      data_combined,
+      batch_size=args.batch_size, num_workers=1, sampler=sampler, shuffle=shuffle) #sampler=sampler 
 
-train_loader = torch.utils.data.DataLoader(
-    train_data,
-    batch_size=args.batch_size, num_workers=1, sampler=sampler, shuffle=shuffle) #sampler=sampler
-
-
-if VALID:
   val_loader = torch.utils.data.DataLoader(
-      data_orig_val,
-      batch_size=2, shuffle=False, num_workers=1)
-  if args.data_crop:
-    val_loader_crop = torch.utils.data.DataLoader(
-      datasets.ImageFolder(args.data_crop + VALID_IMAGES,
-                          transform=data_transforms_val),
-      batch_size=2, shuffle=False, num_workers=1)
+        data_combined_val,
+        batch_size=2, shuffle=False, num_workers=1)
+else:
+  train_loader = torch.utils.data.DataLoader(
+      train_data,
+      batch_size=args.batch_size, num_workers=1, sampler=sampler, shuffle=shuffle) #sampler=sampler
+  if VALID:
+    val_loader = torch.utils.data.DataLoader(
+        data_orig_val,
+        batch_size=2, shuffle=False, num_workers=1)
+    if args.data_crop:
+      val_loader_crop = torch.utils.data.DataLoader(
+        datasets.ImageFolder(args.data_crop + VALID_IMAGES,
+                            transform=data_transforms_val),
+        batch_size=2, shuffle=False, num_workers=1)
 
 # Neural network and optimizer
 # We define neural net in model.py so that it can be reused by the evaluate.py script
-from efficientnet_pytorch import EfficientNet
 
 
 if MODEL == "MIX":
@@ -252,6 +269,17 @@ elif MODEL == "EFFICIENT":
   else:
     # model = EFFICIENT(args.num_classes)
     model = EfficientNet.from_pretrained('efficientnet-b6', num_classes=args.num_classes)
+    if args.model:
+        print("loading pretrained model")
+        checkpoint = torch.load(args.model)
+        model.load_state_dict(checkpoint) 
+
+    if CHANNELS == "DOUBLE":
+      model._conv_stem = Conv2dStaticSamePadding(in_channels=3*2, out_channels=56, kernel_size=(3, 3), stride=2, image_size=(456, 456))
+    if CHANNELS == "TRIPLE":
+      model._conv_stem = Conv2dStaticSamePadding(in_channels=3*3, out_channels=56, kernel_size=(3, 3), stride=2, image_size=(456, 456))
+
+
   #   model._fc = nn.Sequential(
   #         nn.Linear(2304, 256),
   #         nn.ReLU(),
@@ -310,7 +338,7 @@ elif MODEL == "BIT":
 
 
 
-if args.model:
+if args.model and CHANNELS != 'TRIPLE' and CHANNELS != 'DOUBLE':
     print("loading pretrained model")
     checkpoint = torch.load(args.model)
     model.load_state_dict(checkpoint) 
@@ -465,7 +493,7 @@ for epoch in range(1, args.epochs + 1):
         validation_mix(val_loader)
       else:
         validation(val_loader)
-      if args.data_crop:
+      if args.data_crop and CHANNELS != "DOUBLE" and CHANNELS != "TRIPLE":
         print("validation on cropped")
         if MODEL == "MIX":
           validation_mix(val_loader_crop)

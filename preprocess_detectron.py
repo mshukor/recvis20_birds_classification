@@ -133,7 +133,8 @@ def detect_birds(model, input_folder, output_folder_crop, generate_masks=False, 
 
           # Save generated image with detections
           path = path.split("/")[-1]
-          plt.imsave(output_folder_crop+'/'+data_folder+'/'+folder+'/'+path, img, dpi=1000)
+          print(output_folder_crop+'/'+data_folder+'/'+folder+'/'+path)
+          plt.imsave(output_folder_crop+'/'+data_folder+'/'+folder+'/crop'+path, img, dpi=1000)
           if generate_masks:
             if not invalid_mask:
               masked_img = cv2.cvtColor(masked_img, cv2.COLOR_BGR2RGB)

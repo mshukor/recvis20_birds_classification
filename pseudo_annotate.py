@@ -47,9 +47,10 @@ def normalize8(I):
 
 DATA = args.dir
  
-TEST_IMAGES = '/train_images' # '/test_images' 'train_images
+TEST_IMAGES = '/images' # '/test_images' 'train_images
 model_path = args.model
 model_path2 = args.model2
+RESIZE = 500 #None
 
 use_cuda = False
 output_folder_pseudo = args.out
@@ -59,9 +60,15 @@ TRAIN_IMAGES = '/train_images' # '/train_images' '/images
 data_orig = datasets.ImageFolder("bird_dataset" + TRAIN_IMAGES)
 classes_to_names = {v: k for k, v in data_orig.class_to_idx.items()}
 
-data_transforms= transforms.Compose([
-    transforms.ToTensor(),
-])
+if RESIZE:
+  data_transforms= transforms.Compose([
+      transforms.Resize((RESIZE, RESIZE)),
+      transforms.ToTensor(),
+  ])
+else:
+   data_transforms= transforms.Compose([
+      transforms.ToTensor(),
+  ]) 
 
 
 loader = torch.utils.data.DataLoader(
@@ -114,7 +121,6 @@ def pseudo_annotate():
           pred2 = output2.data
           confidence2 = softmax(pred2/T)*100.
           confidence2, cls2 = confidence2.max(1, keepdim=True)
-
         output = model(data)
         pred = output.data
         confidence0 = softmax(pred/T)*100.

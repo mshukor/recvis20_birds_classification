@@ -54,6 +54,10 @@ parser.add_argument('--data-pseudo', type=str, default=None, metavar='D',
                     help="folder where data is located. train_images/ and val_images/ need to be found in the folder")
 parser.add_argument('--data-attention', type=str, default=None, metavar='D',
                     help="folder where data is located. train_images/ and val_images/ need to be found in the folder")
+parser.add_argument('--data-pseudo-2', type=str, default=None, metavar='D',
+                    help="folder where data is located. train_images/ and val_images/ need to be found in the folder")
+parser.add_argument('--data-nabirds', type=str, default=None, metavar='D',
+                    help="folder where data is located. train_images/ and val_images/ need to be found in the folder")
 
 parser.add_argument('--model', type=str, default=None, metavar='D',
                     help="folder where data is located. train_images/ and val_images/ need to be found in the folder")
@@ -178,13 +182,34 @@ else:
                           transform=data_transforms_val)
   else:
     data_attention = None
+  if args.data_pseudo_2:
+    data_pseudo_2 = datasets.ImageFolder(args.data_pseudo_2 + TRAIN_IMAGES,
+                          transform=data_transforms_val)
+  else:
+    data_pseudo_2 = None
+
+  if args.data_nabirds:
+    data_nabirds = datasets.ImageFolder(args.data_nabirds + '/train_images',
+                          transform=data_transforms_val)
+  else:
+    data_nabirds = None
 
 
 
 if CHANNELS != "DOUBLE" and CHANNELS != "TRIPLE":
 
-  if args.data_crop and args.data_attention and args.data_pseudo:
-    train_data = ConcatDataset(data_orig, data_crop, data_attention, data_pseudo)
+
+
+  if args.data_nabirds and args.data_crop and args.data_attention and args.data_pseudo and args.data_pseudo_2:
+    train_data = ConcatDataset(data_orig, data_crop, data_attention, data_pseudo, data_pseudo_2, data_nabirds)
+   
+    targets += data_crop.targets
+    targets +=  data_attention.targets
+    targets +=  data_pseudo.targets
+    targets +=  data_nabirds.targets
+
+  elif args.data_crop and args.data_attention and args.data_pseudo and args.data_pseudo_2:
+    train_data = ConcatDataset(data_orig, data_crop, data_attention, data_pseudo, data_pseudo_2)
    
     targets += data_crop.targets
     targets +=  data_attention.targets

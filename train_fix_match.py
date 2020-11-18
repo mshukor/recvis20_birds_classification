@@ -15,7 +15,7 @@ from sklearn.model_selection import train_test_split
 import numpy as np
 import timm
 import torchvision.transforms as transforms
-import bit_torch_models as models
+import bit_torch_models as bit_models
 # from models import EFFICIENT
 import torch.nn.functional as F
 import torchvision
@@ -38,6 +38,13 @@ parser.add_argument('--data-attention', type=str, default=None, metavar='D',
                     help="folder where data is located. train_images/ and val_images/ need to be found in the folder")
 parser.add_argument('--data-no-label', type=str, default=None, metavar='D',
                     help="folder where data is located. train_images/ and val_images/ need to be found in the folder")
+
+parser.add_argument('--data-no-label-crop', type=str, default=None, metavar='D',
+                    help="folder where data is located. train_images/ and val_images/ need to be found in the folder")
+parser.add_argument('--data-no-label-attention', type=str, default=None, metavar='D',
+                    help="folder where data is located. train_images/ and val_images/ need to be found in the folder")
+
+
 
 parser.add_argument('--model', type=str, default=None, metavar='D',
                     help="folder where data is located. train_images/ and val_images/ need to be found in the folder")
@@ -64,8 +71,11 @@ parser.add_argument('--online_da', type=bool, default=True, metavar='N',
                     help='online data augmentaiion')
 # parser.add_argument('--merged', type=bool, default=False, metavar='N',
 #                     help='use several datasets')
-
+parser.add_argument('--weight-decay', default=2e-4, type=float, help='weight decay')
 # fix match 
+parser.add_argument('--model-ema', type=str, default=None, metavar='D',
+                    help="folder where data is located. train_images/ and val_images/ need to be found in the folder")
+
 parser.add_argument('--eval-step', default=1024, type=int,
                     help='number of eval steps to run')
 parser.add_argument('--use-ema', action='store_true', default=True,
@@ -76,7 +86,7 @@ parser.add_argument('--mu', default=4, type=int,
                     help='coefficient of unlabeled batch size')
 parser.add_argument('--lambda-u', default=1, type=float,
                     help='coefficient of unlabeled loss')
-parser.add_argument('--T', default=1.5, type=float,
+parser.add_argument('--T', default=1, type=float,
                     help='pseudo label temperature')
 parser.add_argument('--threshold', default=0.9, type=float,
                     help='pseudo label threshold')
@@ -194,6 +204,18 @@ else:
   else:
     data_no_label = None
 
+  if args.data_no_label_crop:
+    data_no_label_crop = datasets.ImageFolder(args.data_no_label_crop + TEST_IMAGES,
+                          transform=TransformFixMatch())
+  else:
+    data_no_label_crop = None
+
+  if args.data_no_label_attention:
+    data_no_label_attention = datasets.ImageFolder(args.data_no_label_attention + TEST_IMAGES,
+                          transform=TransformFixMatch())
+  else:
+    data_no_label_attention = None
+
 
 if CHANNELS != "DOUBLE" and CHANNELS != "TRIPLE":
   if args.data_crop and args.data_mask:
@@ -215,6 +237,8 @@ if CHANNELS != "DOUBLE" and CHANNELS != "TRIPLE":
   else:
     train_data = data_orig
 
+  if args.data_no_label_crop and args.data_no_label_attention:
+    data_no_label = ConcatDataset(data_no_label, data_no_label_crop, data_no_label_attention)
 
 if BALANCE_CLASSES:
   class_sample_count = torch.unique(torch.from_numpy(np.array(targets)), return_counts=True)[1]
@@ -376,7 +400,7 @@ if MODEL == "MIX":
 else:
   optimizer = optim.Adam(model.parameters(), lr=args.lr) #momentum=args.momentum
 
-  optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum) #momentum=args.momentum
+  optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum, weight_decay=args.weight_decay) #momentum=args.momentum
   lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, args.epochs)
 
   # optimizer = AdaBelief(model.parameters(), lr=args.lr, eps=1e-16, betas=(0.9,0.999), weight_decouple = True, rectify = False)
@@ -415,14 +439,17 @@ def train(epoch):
                 epoch, batch_idx * len(data), len(train_loader.dataset),
                 100. * batch_idx / len(train_loader), loss.data.item()))
 
+
+
+
 def validation(val_loader):
-    model.eval()
+    test_model.eval()
     validation_loss = 0
     correct = 0
     for data, target in val_loader:
         if use_cuda:
             data, target = data.cuda(), target.cuda()
-        output = model(data)
+        output = test_model(data)
         # sum up batch loss
         criterion = torch.nn.CrossEntropyLoss(reduction='mean')
         validation_loss += criterion(output, target).data.item()
@@ -435,67 +462,6 @@ def validation(val_loader):
         validation_loss, correct, len(val_loader.dataset),
         100. * correct / len(val_loader.dataset)))
 
-def validation_mix(val_loader):
-    backbone_specialized.eval()
-    backbone_generalized.eval()
-    model_head.eval()
-
-    validation_loss = 0
-    correct = 0
-    for data, target in val_loader:
-        if use_cuda:
-            data, target = data.cuda(), target.cuda()
-
-        general_embedd = backbone_generalized(data)
-        special_embedd = backbone_specialized(data)
-
-        concat_embedd = torch.cat((special_embedd, special_embedd), dim=1)
-        output = model_head(concat_embedd)
-
-
-        # output = model(data)
-        # sum up batch loss
-        criterion = torch.nn.CrossEntropyLoss(reduction='mean')
-        validation_loss += criterion(output, target).data.item()
-        # get the index of the max log-probability
-        pred = output.data.max(1, keepdim=True)[1]
-        correct += pred.eq(target.data.view_as(pred)).cpu().sum()
-
-    validation_loss /= len(val_loader.dataset)
-    print('\nValidation set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)'.format(
-        validation_loss, correct, len(val_loader.dataset),
-        100. * correct / len(val_loader.dataset)))
-def train_mix(epoch):
-    # lr_scheduler.step()
-    backbone_generalized.train(False)
-    backbone_specialized.train()   
-    model_head.train() 
-    for batch_idx, (data, target) in enumerate(train_loader):
-        
-        if target.numpy().any() >= 20 and target.numpy().any() < 0:
-            print(target.numpy())
-            continue
-        if use_cuda:
-            data, target = data.cuda(), target.cuda()
-        optimizer.zero_grad()
-        
-        
-        general_embedd = backbone_generalized(data)
-        special_embedd = backbone_specialized(data)
-
-        concat_embedd = torch.cat((special_embedd, special_embedd), dim=1)
-        output = model_head(concat_embedd)
-
-        criterion = torch.nn.CrossEntropyLoss(reduction='mean')
-        loss = criterion(output, target)
-        # loss.requres_grad = True
-
-        loss.backward()
-        optimizer.step()
-        if batch_idx % args.log_interval == 0:
-            print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
-                epoch, batch_idx * len(data), len(train_loader.dataset),
-                100. * batch_idx / len(train_loader), loss.data.item()))
 
 
 model_name = "/" + args.name
@@ -504,40 +470,12 @@ if FIX_MATCH:
     labeled_iter = iter(train_loader)
     unlabeled_iter = iter(train_no_label_loader)
 
-# for epoch in range(1, args.epochs + 1):
-#     if MODEL == "MIX":
-#       train_mix(epoch)
-#     else:
-#       train(epoch)
-#     if VALID:
-#       if MODEL == "MIX":
-#         validation_mix(val_loader)
-#       else:
-#         validation(val_loader)
-#       if args.data_crop and CHANNELS != "DOUBLE" and CHANNELS != "TRIPLE":
-#         print("validation on cropped")
-#         if MODEL == "MIX":
-#           validation_mix(val_loader_crop)
-#         else:
-#           validation(val_loader_crop)
-#     if MODEL == "MIX":
-#       model_file_back = args.experiment + model_name +'_back_' + '_model_' + str(epoch) + '.pth'
-#       torch.save(backbone_specialized.state_dict(), model_file_back)
-
-#       model_file_head = args.experiment + model_name +'_head_' + '_model_' + str(epoch) + '.pth'
-#       torch.save(model_head.state_dict(), model_file_head)
-#       print('Saved model to ' + model_file_back + '. You can run `python evaluate.py --model ' + model_file_back + '` to generate the Kaggle formatted csv file\n')
-#       print('Saved model to ' + model_file_head + '. You can run `python evaluate.py --model ' + model_file_head + '` to generate the Kaggle formatted csv file\n')
-#     else:
-#       model_file = args.experiment + model_name +  '_model_' + str(epoch) + '.pth'
-#       torch.save(model.state_dict(), model_file)
-#       print('Saved model to ' + model_file + '. You can run `python evaluate.py --model ' + model_file + '` to generate the Kaggle formatted csv file\n')
-
 # https://github.com/kekmodel/FixMatch-pytorch/blob/master/train.py
 
 device = torch.device('cuda')
 
 print("train_loader size = ", len(train_loader))
+print("loader no label size = ", len(train_no_label_loader))
 def interleave(x, size):
     s = list(x.shape)
     return x.reshape([-1, size] + s[1:]).transpose(0, 1).reshape([-1] + s[1:])
@@ -547,6 +485,22 @@ def de_interleave(x, size):
     s = list(x.shape)
     return x.reshape([size, -1] + s[1:]).transpose(0, 1).reshape([-1] + s[1:])
 
+args.device = device
+args.resume = False
+
+
+if args.use_ema:
+    from ema import ModelEMA
+    ema_model = ModelEMA(args, model, args.ema_decay)
+    if args.resume:
+      checkpoint_ema = torch.load(args.model_ema)
+      ema_model.ema.load_state_dict(checkpoint_ema)
+
+       
+    test_model = ema_model.ema
+
+else:
+  test_model = model
 
 for epoch in range(1, args.epochs + 1):
   lr_scheduler.step()
@@ -591,8 +545,9 @@ for epoch in range(1, args.epochs + 1):
       loss.backward()
 
       optimizer.step()
-      # scheduler.step()
-   
+      if args.use_ema:
+        ema_model.update(model)
+
       model.zero_grad()
       if batch_idx % args.log_interval == 0:
         print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f} \tLoss_x: {:.6f} \tLoss_u: {:.6f} '.format(
@@ -603,6 +558,12 @@ for epoch in range(1, args.epochs + 1):
   if not args.test:
     model_file = args.experiment + model_name +  '_model_' + str(epoch) + '.pth'
     torch.save(model.state_dict(), model_file)
+    if args.use_ema:
+      model_file_ema = args.experiment + model_name +  'ema_model_' + str(epoch) + '.pth'
+      ema_to_save = ema_model.ema.module if hasattr(ema_model.ema, "module") else ema_model.ema
+      torch.save(ema_to_save.state_dict(), model_file_ema)
+      print('Saved model to ' + model_file_ema + '. You can run `python evaluate.py --model ' + model_file_ema + '` to generate the Kaggle formatted csv file\n')
+
     print('Saved model to ' + model_file + '. You can run `python evaluate.py --model ' + model_file + '` to generate the Kaggle formatted csv file\n')
 
 

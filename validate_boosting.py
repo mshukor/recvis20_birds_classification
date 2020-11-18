@@ -78,7 +78,6 @@ val_loader = torch.utils.data.DataLoader(
 
 classes_to_names = {v: k for k, v in data_val.class_to_idx.items()}
 
-    
 
 correct, correct_mask, correct_crop, correct_ensemble = 0, 0, 0, 0
 len_data = 0
@@ -148,6 +147,4 @@ for d in os.listdir(test_dir):
 
 print("correct", correct, "correct_mask", correct_mask, "correct_crop", correct_crop, "correct_ensemble", correct_ensemble)
 print("correct", correct/len_data , "correct_mask", correct_mask/len_data, "correct_crop", correct_crop/len_data, "correct_ensemble", correct_ensemble/len_data)
-      
-
-
+  

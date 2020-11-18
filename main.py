@@ -78,9 +78,7 @@ parser.add_argument('--num_classes', type=int, default=20, metavar='N',
                     help='number of epochs to train (default: 10)')
 parser.add_argument('--online_da', type=bool, default=True, metavar='N',
                     help='online data augmentaiion')
-# parser.add_argument('--merged', type=bool, default=False, metavar='N',
-#                     help='use several datasets')
-
+parser.add_argument('--weight-decay', default=2e-4, type=float, help='weight decay')
 
 args = parser.parse_args()
 use_cuda = torch.cuda.is_available()
@@ -100,7 +98,7 @@ TRAIN_IMAGES = '/train_images' # '/train_images' '/images
 VALID_IMAGES = '/val_images' #
 VALID = True
 PRETRAIN = False
-CHANNELS = "TRIPLE" # "TRIPLE"
+CHANNELS = "SINGLE" # "TRIPLE"
 NEW_EVAL = False
 BALANCE_CLASSES = False
 
@@ -184,7 +182,15 @@ else:
 
 
 if CHANNELS != "DOUBLE" and CHANNELS != "TRIPLE":
-  if args.data_crop and args.data_mask:
+
+  if args.data_crop and args.data_attention and args.data_pseudo:
+    train_data = ConcatDataset(data_orig, data_crop, data_attention, data_pseudo)
+   
+    targets += data_crop.targets
+    targets +=  data_attention.targets
+    targets +=  data_pseudo.targets
+
+  elif args.data_crop and args.data_mask:
     train_data = ConcatDataset(data_orig, data_crop, data_mask)
 
   elif args.data_crop and args.data_pseudo:
@@ -362,16 +368,16 @@ if MODEL == "MIX":
 else:
   optimizer = optim.Adam(model.parameters(), lr=args.lr) #momentum=args.momentum
 
-  # optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum) #momentum=args.momentum
-  # lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, args.epochs)
+  optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum, weight_decay = args.weight_decay) #momentum=args.momentum
+  lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, args.epochs)
 
   # optimizer = AdaBelief(model.parameters(), lr=args.lr, eps=1e-16, betas=(0.9,0.999), weight_decouple = True, rectify = False)
-  optimizer = RangerAdaBelief(model.parameters(), lr=args.lr, eps=1e-12, betas=(0.9,0.999))
+  # optimizer = RangerAdaBelief(model.parameters(), lr=args.lr, eps=1e-12, betas=(0.9,0.999))
   # lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, args.epochs)
 
 
 def train(epoch):
-    # lr_scheduler.step()
+    lr_scheduler.step()
     model.train()
     correct = 0
     for batch_idx, (data, target) in enumerate(train_loader):

@@ -24,6 +24,8 @@ parser.add_argument('--dir', type=str, default='bird_dataset', metavar='D',
                     help="folder where data is located. train_images/ and val_images/ need to be found in the folder")
 parser.add_argument('--out', type=str, default='bird_dataset', metavar='D',
                     help="folder where data is located. train_images/ and val_images/ need to be found in the folder")
+parser.add_argument('--out-no', type=str, default='pseudo_no', metavar='D',
+                    help="folder where data is located. train_images/ and val_images/ need to be found in the folder")
 
 parser.add_argument('--thresh', type=float, default=0.8, metavar='D',
                     help="threshold for pseudo labels")
@@ -44,14 +46,14 @@ def normalize8(I):
   return I.astype(np.uint8)
 
 DATA = args.dir
-
-TEST_IMAGES = '/test_images' # '/test_images'
+ 
+TEST_IMAGES = '/train_images' # '/test_images' 'train_images
 model_path = args.model
 model_path2 = args.model2
 
 use_cuda = False
 output_folder_pseudo = args.out
-
+output_folder_pseudo_not = args.out_no
 
 TRAIN_IMAGES = '/train_images' # '/train_images' '/images
 data_orig = datasets.ImageFolder("bird_dataset" + TRAIN_IMAGES)
@@ -139,6 +141,9 @@ def pseudo_annotate():
         os.makedirs(output_folder_pseudo, exist_ok = True)
         os.makedirs(output_folder_pseudo+'/'+ 'train_images'+'/'+ folder_name, exist_ok = True)
 
+        os.makedirs(output_folder_pseudo_not, exist_ok = True)
+        os.makedirs(output_folder_pseudo_not+'/'+ 'train_images'+'/'+ folder_name, exist_ok = True)
+
         image = np.rollaxis(data[0].numpy(), 0, 3)
         # image = Image.fromarray(normalize8(image)).convert('RGB')
         # image = cv2.cvtColor(normalize8(image), cv2.COLOR_BGR2RGB)
@@ -149,6 +154,9 @@ def pseudo_annotate():
           print(count)
           if not args.test:
             plt.imsave(output_folder_pseudo+'/'+'train_images'+'/'+folder_name+'/'+folder_name.split(".")[1] + "_" + str(count) + ".jpg", image, dpi=1000)
+        else:
+          if not args.test:
+            plt.imsave(output_folder_pseudo_not+'/'+'train_images'+'/'+folder_name+'/'+folder_name.split(".")[1] + "_" + str(count) + ".jpg", image, dpi=1000)
 
 
     print('\n Number of annotated images: {}, percentage_annotated = {}/{}'.format(

@@ -121,6 +121,7 @@ CHANNELS = "SINGLE" # "TRIPLE" DOUBLE SINGLE
 NEW_EVAL = False
 BALANCE_CLASSES = False
 FIX_MATCH = True
+SEMI_SELF = True
 if args.online_da:
   train_transform = data_transforms_val
 else:
@@ -221,8 +222,8 @@ if CHANNELS != "DOUBLE" and CHANNELS != "TRIPLE":
   if args.data_crop and args.data_mask:
     train_data = ConcatDataset(data_orig, data_crop, data_mask)
 
-  elif args.data_crop and args.data_pseudo:
-    train_data = ConcatDataset(data_orig, data_crop, data_pseudo)
+  elif args.data_crop and args.data_pseudo and args.data_attention:
+    train_data = ConcatDataset(data_orig, data_crop, data_pseudo, data_attention)
     targets += data_crop.targets
     targets +=  data_pseudo.targets
 
@@ -237,8 +238,8 @@ if CHANNELS != "DOUBLE" and CHANNELS != "TRIPLE":
   else:
     train_data = data_orig
 
-  if args.data_no_label_crop and args.data_no_label_attention:
-    data_no_label = ConcatDataset(data_no_label, data_no_label_crop, data_no_label_attention)
+  if args.data_no_label_crop:
+    data_no_label = ConcatDataset(data_no_label, data_no_label_crop)
 
 if BALANCE_CLASSES:
   class_sample_count = torch.unique(torch.from_numpy(np.array(targets)), return_counts=True)[1]
@@ -268,7 +269,7 @@ else:
   train_loader = torch.utils.data.DataLoader(
       train_data,
       batch_size=args.batch_size, num_workers=1, sampler=sampler, shuffle=shuffle) #sampler=sampler
-  if FIX_MATCH:
+  if SEMI_SELF:
     train_no_label_loader = torch.utils.data.DataLoader(
         data_no_label,
         batch_size=args.batch_size_u, num_workers=1, sampler=sampler, shuffle=shuffle) #sampler=sampler
@@ -320,21 +321,6 @@ elif MODEL == "EFFICIENT":
     if CHANNELS == "TRIPLE":
       model._conv_stem = Conv2dStaticSamePadding(in_channels=3*3, out_channels=56, kernel_size=(3, 3), stride=2, image_size=(456, 456))
 
-
-  #   model._fc = nn.Sequential(
-  #         nn.Linear(2304, 256),
-  #         nn.ReLU(),
-  #         nn.Linear(256, 128),
-  #         nn.ReLU(),
-  #         nn.Linear(128, args.num_classes),
-  #       )
-
-  # if FREEZE:
-  #   for name, param in model.named_parameters():
-  #     if name == '_blocks.43._bn2.bias':
-  #       break
-  #     if param.requires_grad:
-  #         param.requires_grad = False
 
 elif MODEL == "RESNEXT":
   model = torchvision.models.resnext50_32x4d(pretrained=True)
@@ -408,48 +394,19 @@ else:
   # lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, args.epochs)
 
 
-def train(epoch):
-    # lr_scheduler.step()
-    model.train()
-    correct = 0
-    for batch_idx, (data, target) in enumerate(train_loader):
-        
-        if target.numpy().any() >= 20 and target.numpy().any() < 0:
-            print(target.numpy())
-            continue
-        if use_cuda:
-            data, target = data.cuda(), target.cuda()
-        optimizer.zero_grad()
-        
-        
-        output = model(data)
-      
-        criterion = torch.nn.CrossEntropyLoss(reduction='mean')
-        loss = criterion(output, target)
-        # loss.requres_grad = True
-
-        loss.backward()
-        optimizer.step()
-
-        # pred = output.data.max(1, keepdim=True)[1]
-        # correct += pred.eq(target.data.view_as(pred)).cpu().sum()
-
-        if batch_idx % args.log_interval == 0:
-            print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
-                epoch, batch_idx * len(data), len(train_loader.dataset),
-                100. * batch_idx / len(train_loader), loss.data.item()))
-
 
 
 
 def validation(val_loader):
     model.eval()
+    classifier.eval()
     validation_loss = 0
     correct = 0
     for data, target in val_loader:
         if use_cuda:
             data, target = data.cuda(), target.cuda()
         output = model(data)
+        output = classifier(output)
         # sum up batch loss
         criterion = torch.nn.CrossEntropyLoss(reduction='mean')
         validation_loss += criterion(output, target).data.item()
@@ -466,28 +423,32 @@ def validation(val_loader):
 
 model_name = "/" + args.name
 
-if FIX_MATCH:
-    labeled_iter = iter(train_loader)
-    unlabeled_iter = iter(train_no_label_loader)
 
-# https://github.com/kekmodel/FixMatch-pytorch/blob/master/train.py
+if SEMI_SELF:
+  labeled_iter = iter(train_loader)
+  unlabeled_iter = iter(train_no_label_loader)
+
 
 device = torch.device('cuda')
 
 print("train_loader size = ", len(train_loader))
 print("loader no label size = ", len(train_no_label_loader))
-def interleave(x, size):
-    s = list(x.shape)
-    return x.reshape([-1, size] + s[1:]).transpose(0, 1).reshape([-1] + s[1:])
 
-
-def de_interleave(x, size):
-    s = list(x.shape)
-    return x.reshape([size, -1] + s[1:]).transpose(0, 1).reshape([-1] + s[1:])
 
 args.device = device
 args.resume = False
 
+model._fc = nn.Linear(2048, 256)
+
+classifier_rot =   nn.Sequential(
+          nn.Linear(256, 128),
+          nn.ReLU(),
+          nn.Linear(128, 1),
+        )
+classifier = nn.Linear(256, args.num_classes)
+loss_rot = nn.MSELoss()
+lambda_u_semi = 1
+lambda_u_self = 1
 
 for epoch in range(1, args.epochs + 1):
   lr_scheduler.step()
@@ -509,13 +470,20 @@ for epoch in range(1, args.epochs + 1):
       # inputs = interleave(
       #     torch.cat((inputs_x, inputs_u_w, inputs_u_s)), 2*args.batch_size_u+1).to(device)
 
+      ### rotate 
+      angle = random.randint(-30, 30)
+      inputs_u_rot = TF.rotate(inputs_x, angle)
+
       inputs = torch.cat((inputs_x, inputs_u, inputs_u_rot)).to(device)
       targets_x = targets_x.to(device)
       features = model(inputs)
       logits = classifier(features)
+      logits_rot = classifier_rot(features)
+
       # logits = de_interleave(logits, 2*args.batch_size_u+1)
       logits_x = logits[:batch_size]
-      logits_u_w, logits_u_s = logits[batch_size:].chunk(2)
+      logits_u, _ = logits[batch_size:].chunk(2)
+      _, logits_rot_u = logits_rot[batch_size:].chunk(2)
     
       del logits
 
@@ -524,11 +492,13 @@ for epoch in range(1, args.epochs + 1):
       pseudo_label = torch.softmax(logits_u.detach_()/args.T, dim=-1)
       max_probs, targets_u = torch.max(pseudo_label, dim=-1)
       mask = max_probs.ge(args.threshold).float()
-      Lu = (F.cross_entropy(logits_u, targets_u,
+      Lu_semi = (F.cross_entropy(logits_u, targets_u,
                             reduction='none') * mask).mean()
 
+      Lu_self = (loss_rot(logits_rot_u, angle,
+                        reduction='none') * ~mask).mean()
 
-      loss = Lx + args.lambda_u * Lu
+      loss = Lx + lambda_u_semi * Lu_semi + lambda_u_self*Lu_self
 
  
       loss.backward()
@@ -547,12 +517,8 @@ for epoch in range(1, args.epochs + 1):
   if not args.test:
     model_file = args.experiment + model_name +  '_model_' + str(epoch) + '.pth'
     torch.save(model.state_dict(), model_file)
-    if args.use_ema:
-      model_file_ema = args.experiment + model_name +  'ema_model_' + str(epoch) + '.pth'
-      ema_to_save = ema_model.ema.module if hasattr(ema_model.ema, "module") else ema_model.ema
-      torch.save(ema_to_save.state_dict(), model_file_ema)
-      print('Saved model to ' + model_file_ema + '. You can run `python evaluate.py --model ' + model_file_ema + '` to generate the Kaggle formatted csv file\n')
-
-    print('Saved model to ' + model_file + '. You can run `python evaluate.py --model ' + model_file + '` to generate the Kaggle formatted csv file\n')
+    model_file_classifier = args.experiment + model_name +  'class_model_' + str(epoch) + '.pth'
+    torch.save(classifier.state_dict(), model_file_classifier)
+    print('Saved model to ' + model_file_classifier + '. You can run `python evaluate.py --model ' + model_file + '` to generate the Kaggle formatted csv file\n')
 
 

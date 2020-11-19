@@ -47,12 +47,12 @@ def normalize8(I):
 
 DATA = args.dir
  
-TEST_IMAGES = '/images' # '/test_images' 'train_images
+TEST_IMAGES = '/test_images' # '/test_images' 'train_images
 model_path = args.model
 model_path2 = args.model2
 RESIZE = 500 #None
 
-use_cuda = False
+use_cuda = True
 output_folder_pseudo = args.out
 output_folder_pseudo_not = args.out_no
 
@@ -149,8 +149,10 @@ def pseudo_annotate():
 
         os.makedirs(output_folder_pseudo_not, exist_ok = True)
         os.makedirs(output_folder_pseudo_not+'/'+ 'train_images'+'/'+ folder_name, exist_ok = True)
-
-        image = np.rollaxis(data[0].numpy(), 0, 3)
+        if use_cuda:
+          image = np.rollaxis(data[0].cpu().numpy(), 0, 3)
+        else:
+          image = np.rollaxis(data[0].numpy(), 0, 3)
         # image = Image.fromarray(normalize8(image)).convert('RGB')
         # image = cv2.cvtColor(normalize8(image), cv2.COLOR_BGR2RGB)
         image = normalize8(image)

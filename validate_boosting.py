@@ -10,6 +10,7 @@ from torchvision import datasets
 from model import Net
 import torch.nn as nn
 from efficientnet_pytorch.utils import Conv2dStaticSamePadding
+import torchvision
 
 parser = argparse.ArgumentParser(description='RecVis A3 evaluation script')
 parser.add_argument('--data', type=str, default='bird_dataset', metavar='D',
@@ -25,6 +26,8 @@ parser.add_argument('--model', type=str, metavar='M',
                     help="the model file to be evaluated. Usually it is of the form model_X.pth")
 parser.add_argument('--outfile', type=str, default='experiment/kaggle.csv', metavar='D',
                     help="name of the output csv file")
+parser.add_argument('--model2', type=str, metavar='M', default=None,
+                    help="the model file to be evaluated. Usually it is of the form model_X.pth")
 
 args = parser.parse_args()
 use_cuda = torch.cuda.is_available()
@@ -41,9 +44,17 @@ model = EfficientNet.from_pretrained('efficientnet-b6', num_classes=20)
 
 # model = inception_v3(pretrained=False)
 # model.fc = nn.Linear(2048, 20)
+if args.model2:
+  model2 = torchvision.models.resnext50_32x4d(pretrained=True)
+  model2.fc = nn.Linear(2048, 20)
+  state_dict2 = torch.load(args.model2)
+  model2.load_state_dict(state_dict2)
+  model2.eval()
+  model2.cuda()
 
 model.load_state_dict(state_dict)
 model.eval()
+
 if use_cuda:
     print('Using GPU')
     model.cuda()
@@ -119,10 +130,10 @@ for d in tqdm(os.listdir(test_dir)):
           # sample = torch.cat((data_mask, data_mask, data_attention), dim=0)
           # sample.unsqueeze_(0)
           if use_cuda:
-              data = data.cuda().unsqueeze(0)
-              data_mask = data_mask.cuda().unsqueeze(0)
-              data_crop = data_crop.cuda().unsqueeze(0)
-              data_attention = data_attention.cuda().unsqueeze(0)
+              data = data.cuda()
+              data_mask = data_mask.cuda()
+              data_crop = data_crop.cuda()
+              data_attention = data_attention.cuda()
           data = data.unsqueeze(0)
           data_mask = data_mask.unsqueeze(0)
           data_crop = data_crop.unsqueeze(0)
@@ -135,11 +146,21 @@ for d in tqdm(os.listdir(test_dir)):
           if cls.lower() in f.lower():
             correct+=1
 
-          output_mask = model(data_mask)
-          pred_mask_score, pred_mask = output_mask.data.max(1, keepdim=False)
-          cls_mask = classes_to_names[int(pred_mask.item())].split(".")[1]
-          if cls_mask.lower() in f.lower():
-            correct_mask+=1
+          
+
+          # output_mask = model(data_mask)
+          # pred_mask_score, pred_mask = output_mask.data.max(1, keepdim=False)
+          # cls_mask = classes_to_names[int(pred_mask.item())].split(".")[1]
+          # if cls_mask.lower() in f.lower():
+          #   correct_mask+=1
+          if args.model2:
+            output_mask = model2(data)
+            pred_mask_score, pred_mask = output_mask.data.max(1, keepdim=False)
+            cls_mask = classes_to_names[int(pred_mask.item())].split(".")[1]
+            if cls_mask.lower() in f.lower():
+              correct_mask+=1
+
+
 
           output_crop = model(data_crop)
           pred_crop_score, pred_crop = output_crop.data.max(1, keepdim=False)

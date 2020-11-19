@@ -25,6 +25,8 @@ parser.add_argument('--model', type=str, metavar='M',
                     help="the model file to be evaluated. Usually it is of the form model_X.pth")
 parser.add_argument('--outfile', type=str, default='experiment/kaggle.csv', metavar='D',
                     help="name of the output csv file")
+parser.add_argument('--model2', type=str, metavar='M', default=None,
+                    help="the model file to be evaluated. Usually it is of the form model_X.pth")
 
 args = parser.parse_args()
 use_cuda = torch.cuda.is_available()
@@ -35,6 +37,15 @@ else:
   state_dict = torch.load(args.model, map_location=torch.device('cpu'))
 
 from efficientnet_pytorch import EfficientNet
+
+
+if args.model2:
+  model2 = torchvision.models.resnext50_32x4d(pretrained=True)
+  model2.fc = nn.Linear(2048, 20)
+  state_dict2 = torch.load(args.model2)
+  model2.load_state_dict(state_dict2)
+  model2.eval()
+  model2.cuda()
 
 model = EfficientNet.from_pretrained('efficientnet-b6', num_classes=20)
 

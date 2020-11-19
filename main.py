@@ -97,7 +97,7 @@ if not os.path.isdir(args.experiment):
 # Data initialization and loading
 from data import data_transforms_train, data_transforms_val
 MODEL = "EFFICIENT" # EFFICIENT INCEPTION INCEPTIONRESNETV2 VIT BIT RESNEXT
-FREEZE = True
+FREEZE = False
 TRAIN_IMAGES = '/train_images' # '/train_images' '/images
 VALID_IMAGES = '/val_images' #
 VALID = True
@@ -208,8 +208,8 @@ if CHANNELS != "DOUBLE" and CHANNELS != "TRIPLE":
     targets +=  data_pseudo.targets
     targets +=  data_nabirds.targets
 
-  elif args.data_crop and args.data_attention and args.data_pseudo and args.data_pseudo_2:
-    train_data = ConcatDataset(data_orig, data_crop, data_attention, data_pseudo, data_pseudo_2)
+  elif args.data_crop and args.data_attention and args.data_pseudo :
+    train_data = ConcatDataset(data_orig, data_crop, data_attention, data_pseudo)
    
     targets += data_crop.targets
     targets +=  data_attention.targets
@@ -328,13 +328,7 @@ elif MODEL == "EFFICIENT":
 
 elif MODEL == "RESNEXT":
   model = torchvision.models.resnext50_32x4d(pretrained=True)
-  model.fc = nn.Sequential(
-      nn.Linear(2048, 256),
-      nn.ReLU(),
-      nn.Linear(256, 128),
-      nn.ReLU(),
-      nn.Linear(128, args.num_classes),
-    )
+  model.fc = nn.Linear(2048, args.num_classes)
   if FREEZE:
     for name, param in model.named_parameters():
       if 'fc' in name:
@@ -368,7 +362,6 @@ elif MODEL == "BIT":
   
 
 print("USING : ", CHANNELS)
-print("CHECK", model._conv_stem)
 
 if args.model and CHANNELS != 'TRIPLE' and CHANNELS != 'DOUBLE':
     print("loading pretrained model")

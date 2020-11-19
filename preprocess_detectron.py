@@ -52,7 +52,7 @@ model = DefaultPredictor(cfg)
 
 
 def detect_birds(model, input_folder, output_folder_crop, generate_masks=False, output_folder_mask="mask_dataset"):
-  kernel = np.ones((31, 31), 'uint8')
+  kernel = np.ones((25, 25), 'uint8')
   for data_folder in list(os.listdir(input_folder)): # Iterate over train, val and test
     non_cropped = 0
     non_cropped_names = []

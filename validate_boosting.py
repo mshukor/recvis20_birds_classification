@@ -81,8 +81,22 @@ classes_to_names = {v: k for k, v in data_val.class_to_idx.items()}
 
 correct, correct_mask, correct_crop, correct_ensemble = 0, 0, 0, 0
 len_data = 0
-for d in os.listdir(test_dir):
-    for f in os.listdir(os.path.join(test_dir, d)):
+
+from torchvision import transforms
+data_transforms_boost = transforms.Compose([
+    transforms.Resize((456, 456)),
+    transforms.ToTensor(),
+    transforms.RandomHorizontalFlip(p=0.5),
+    transforms.RandomRotation(30),
+    transforms.RandomResizedCrop((456, 456)),
+
+    transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                                 std=[0.229, 0.224, 0.225])
+])
+
+
+for d in tqdm(os.listdir(test_dir)):
+    for f in tqdm(os.listdir(os.path.join(test_dir, d))):
       if 'jpg' in f:
           len_data+=1
           data = data_transforms(pil_loader(os.path.join(test_dir, d) + '/' + f))
@@ -109,6 +123,11 @@ for d in os.listdir(test_dir):
               data_mask = data_mask.cuda().unsqueeze(0)
               data_crop = data_crop.cuda().unsqueeze(0)
               data_attention = data_attention.cuda().unsqueeze(0)
+          data = data.unsqueeze(0)
+          data_mask = data_mask.unsqueeze(0)
+          data_crop = data_crop.unsqueeze(0)
+          data_attention = data_attention.unsqueeze(0)
+
 
           output = model(data)
           pred_score, pred = output.data.max(1, keepdim=False)

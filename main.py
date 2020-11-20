@@ -96,7 +96,7 @@ if not os.path.isdir(args.experiment):
 
 # Data initialization and loading
 from data import data_transforms_train, data_transforms_val
-MODEL = "RESNET" # EFFICIENT INCEPTION INCEPTIONRESNETV2 VIT BIT RESNEXT RESNET
+MODEL = "EFFICIENT" # EFFICIENT INCEPTION INCEPTIONRESNETV2 VIT BIT RESNEXT RESNET
 FREEZE = False
 TRAIN_IMAGES = '/train_images' # '/train_images' '/images
 VALID_IMAGES = '/val_images' #
@@ -104,7 +104,7 @@ VALID = True
 PRETRAIN = False
 CHANNELS = "SINGLE" # "TRIPLE"
 NEW_EVAL = False
-BALANCE_CLASSES = False
+BALANCE_CLASSES = True
 
 if args.online_da:
   train_transform = data_transforms_val
@@ -208,12 +208,13 @@ if CHANNELS != "DOUBLE" and CHANNELS != "TRIPLE":
     targets +=  data_pseudo.targets
     targets +=  data_nabirds.targets
 
-  elif args.data_crop and args.data_attention and args.data_pseudo :
-    train_data = ConcatDataset(data_orig, data_crop, data_attention, data_pseudo)
+  elif args.data_nabirds and args.data_crop and args.data_attention and args.data_pseudo :
+    train_data = ConcatDataset(data_orig, data_crop, data_attention, data_pseudo, data_nabirds)
    
     targets += data_crop.targets
     targets +=  data_attention.targets
     targets +=  data_pseudo.targets
+    targets +=  data_nabirds.targets
 
   elif args.data_crop and args.data_mask:
     train_data = ConcatDataset(data_orig, data_crop, data_mask)

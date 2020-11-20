@@ -47,7 +47,7 @@ def normalize8(I):
 
 DATA = args.dir
  
-TEST_IMAGES = '/test_images' # '/test_images' 'train_images
+TEST_IMAGES = '/images' # '/test_images' 'train_images
 model_path = args.model
 model_path2 = args.model2
 RESIZE = 500 #None

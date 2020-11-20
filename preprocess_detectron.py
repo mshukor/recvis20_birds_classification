@@ -74,6 +74,9 @@ def detect_birds(model, input_folder, output_folder_crop, generate_masks=False, 
 
       # Reformat weird images
       for file in os.listdir(directory+'/'+folder):
+        if '.jpg' not  in file:
+          print(file)
+          continue
         i = plt.imread(directory+'/'+folder+'/'+file)
         if len(i.shape)==2 or i.shape[2]!=3:
           i = Image.fromarray(i)
@@ -83,6 +86,9 @@ def detect_birds(model, input_folder, output_folder_crop, generate_masks=False, 
                 
       # Get image paths and detections : not the most efficient way, but it avoids defining a proper detectron2-specific Dataloader 
       for img_path in list(os.listdir(directory+'/'+folder)):
+        if '.jpg' not in img_path:
+          print(img_path)
+          continue
         img = cv2.imread(directory+'/'+folder+'/'+img_path)
         with torch.no_grad():
           detections = model(img)["instances"]

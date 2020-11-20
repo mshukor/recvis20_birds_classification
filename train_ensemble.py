@@ -266,7 +266,7 @@ else:
   if VALID:
     val_loader = torch.utils.data.DataLoader(
         data_orig_val,
-        batch_size=2, shuffle=False, num_workers=1)
+        batch_size=1, shuffle=False, num_workers=1)
     if args.data_crop:
       val_loader_crop = torch.utils.data.DataLoader(
         datasets.ImageFolder(args.data_crop + VALID_IMAGES,
@@ -299,7 +299,7 @@ elif MODEL == "EFFICIENT":
     model._fc = nn.Linear(2048, args.num_classes)
   else:
     # model = EFFICIENT(args.num_classes)
-    model = EfficientNet.from_pretrained('efficientnet-b6', num_classes=7)
+    model = EfficientNet.from_pretrained('efficientnet-b6', num_classes=8)
     model2 = EfficientNet.from_pretrained('efficientnet-b6', num_classes=7)
     model3 = EfficientNet.from_pretrained('efficientnet-b6', num_classes=8)
     # if args.model:
@@ -418,8 +418,9 @@ def train(epoch):
     model2.train()
     model3.train()
     correct = 0
+    i = 0 
     for batch_idx, (data, target) in enumerate(train_loader):
-        
+        i+=1
         if target.numpy().any() >= 20 and target.numpy().any() < 0:
             print(target.numpy())
             continue
@@ -436,15 +437,15 @@ def train(epoch):
         criterion2 = torch.nn.CrossEntropyLoss(reduction='mean')
         criterion3 = torch.nn.CrossEntropyLoss(reduction='mean')
 
-        target = target +1
-        mask = target.le(7).long() * target.ge(1).long()
-        mask2 = target.le(13).long() * target.ge(8).long()
-        mask3 = target.ge(14).long()
+        target = target
+        mask = target.le(6).long() # * target.ge(1).long()
+        mask2 = target.le(12).long() * target.ge(7).long()
+        mask3 = target.ge(13).long()
 
-
+     
         loss = criterion(output, target * mask)
-        loss2 = criterion2(output2, target * mask2)
-        loss3 = criterion3(output3, target * mask3)
+        loss2 = criterion2(output2, (target -6) * mask2)
+        loss3 = criterion3(output3, (target -12) * mask3)
 
         # loss.requres_grad = True
 
@@ -459,7 +460,8 @@ def train(epoch):
 
         # pred = output.data.max(1, keepdim=True)[1]
         # correct += pred.eq(target.data.view_as(pred)).cpu().sum()
-
+        # if i > 10:
+        #   break
         if batch_idx % args.log_interval == 0:
             print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f} Loss2: {:.6f} Loss3: {:.6f}'.format(
                 epoch, batch_idx * len(data), len(train_loader.dataset),
@@ -479,7 +481,7 @@ def validation(val_loader):
         output3 = model3(data)
         # sum up batch loss
         criterion = torch.nn.CrossEntropyLoss(reduction='mean')
-        validation_loss += criterion(output, target).data.item()
+        # validation_loss += criterion(output, target).data.item()
         # get the index of the max log-probability
         score, pred = output.data.max(1, keepdim=True)
         score2, pred2 = output2.data.max(1, keepdim=True)
@@ -488,81 +490,25 @@ def validation(val_loader):
         
         output_ensemble = torch.cat((pred , pred2, pred3 ) , dim=0)
         mask = output_ensemble.gt(0)
-
+     
         output_ensemble_score = torch.cat((score, score2, score3) , dim=0)
         output_ensemble_score = output_ensemble_score * mask
 
         max_idx = output_ensemble_score.max(0)[1].item()
-        pred_ensemble = output_ensemble[max_idx] -1 
+    
+        max_add = [-1, 8 -1, 13 -1]
+      
+    
+        pred_ensemble = output_ensemble[max_idx] + max_add[max_idx]
 
         correct += pred.eq(target.data.view_as(pred_ensemble)).cpu().sum()
 
-    validation_loss /= len(val_loader.dataset)
-    print('\nValidation set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)'.format(
-        validation_loss, correct, len(val_loader.dataset),
+    # validation_loss /= len(val_loader.dataset)
+    print('\n Accuracy: {}/{} ({:.0f}%)'.format(
+        correct, len(val_loader.dataset),
         100. * correct / len(val_loader.dataset)))
 
-def validation_mix(val_loader):
-    backbone_specialized.eval()
-    backbone_generalized.eval()
-    model_head.eval()
 
-    validation_loss = 0
-    correct = 0
-    for data, target in val_loader:
-        if use_cuda:
-            data, target = data.cuda(), target.cuda()
-
-        general_embedd = backbone_generalized(data)
-        special_embedd = backbone_specialized(data)
-
-        concat_embedd = torch.cat((special_embedd, special_embedd), dim=1)
-        output = model_head(concat_embedd)
-
-
-        # output = model(data)
-        # sum up batch loss
-        criterion = torch.nn.CrossEntropyLoss(reduction='mean')
-        validation_loss += criterion(output, target).data.item()
-        # get the index of the max log-probability
-        pred = output.data.max(1, keepdim=True)[1]
-        correct += pred.eq(target.data.view_as(pred)).cpu().sum()
-
-    validation_loss /= len(val_loader.dataset)
-    print('\nValidation set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)'.format(
-        validation_loss, correct, len(val_loader.dataset),
-        100. * correct / len(val_loader.dataset)))
-def train_mix(epoch):
-    # lr_scheduler.step()
-    backbone_generalized.train(False)
-    backbone_specialized.train()   
-    model_head.train() 
-    for batch_idx, (data, target) in enumerate(train_loader):
-        
-        if target.numpy().any() >= 20 and target.numpy().any() < 0:
-            print(target.numpy())
-            continue
-        if use_cuda:
-            data, target = data.cuda(), target.cuda()
-        optimizer.zero_grad()
-        
-        
-        general_embedd = backbone_generalized(data)
-        special_embedd = backbone_specialized(data)
-
-        concat_embedd = torch.cat((special_embedd, special_embedd), dim=1)
-        output = model_head(concat_embedd)
-
-        criterion = torch.nn.CrossEntropyLoss(reduction='mean')
-        loss = criterion(output, target)
-        # loss.requres_grad = True
-
-        loss.backward()
-        optimizer.step()
-        if batch_idx % args.log_interval == 0:
-            print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
-                epoch, batch_idx * len(data), len(train_loader.dataset),
-                100. * batch_idx / len(train_loader), loss.data.item()))
 
 model_name = "/" + args.name
 model.cuda()

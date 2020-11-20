@@ -96,7 +96,7 @@ if not os.path.isdir(args.experiment):
 
 # Data initialization and loading
 from data import data_transforms_train, data_transforms_val
-MODEL = "EFFICIENT" # EFFICIENT INCEPTION INCEPTIONRESNETV2 VIT BIT RESNEXT
+MODEL = "RESNET" # EFFICIENT INCEPTION INCEPTIONRESNETV2 VIT BIT RESNEXT RESNET
 FREEZE = False
 TRAIN_IMAGES = '/train_images' # '/train_images' '/images
 VALID_IMAGES = '/val_images' #
@@ -359,7 +359,9 @@ elif MODEL=="VIT":
 elif MODEL == "BIT":
   model = models.KNOWN_MODELS['BiT-M-R101x1'](head_size= args.num_classes, zero_head=True)
   model.load_from(np.load('BiT-M-R101x1.npz'))
-  
+elif MODEL == "RESNET":
+  model = torch.hub.load('pytorch/vision:v0.6.0', 'resnet18', pretrained=True)  
+  model.fc = nn.Linear(512, args.num_classes, bias = True)
 
 print("USING : ", CHANNELS)
 

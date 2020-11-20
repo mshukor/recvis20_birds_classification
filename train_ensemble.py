@@ -15,15 +15,32 @@ from sklearn.model_selection import train_test_split
 import numpy as np
 import timm
 import torchvision.transforms as transforms
-import bit_torch_models as bit_models
+import bit_torch_models as models
 # from models import EFFICIENT
 import torch.nn.functional as F
 import torchvision
 from data import DoubleChannels, TripleChannels
 from efficientnet_pytorch import EfficientNet
 from efficientnet_pytorch.utils import Conv2dStaticSamePadding
-from data import TransformFixMatch
-import torchvision.transforms.functional as TF
+
+# class EFFICIENT(nn.Module):
+#     def __init__(self, num_classes):
+#         super(EFFICIENT, self).__init__()
+#         self.model = EfficientNet.from_pretrained('efficientnet-b6', num_classes=512)
+#         self.fc1 = nn.Linear(512, 256)
+#         self.fc2 = nn.Linear(256, 128)
+#         self.classifier = nn.Linear(128, num_classes)
+#         self.relu = nn.ReLU()
+#         self.dropout = nn.Dropout(0.5)
+#     def forward(self, x):
+#         out = self.model(x)
+#         # out = out.view(x.size(0), -1)
+#         out = self.relu (self.fc1(out))
+#         out = self.dropout(out)
+#         out = self.relu (self.fc2(out))
+#         out = self.dropout(out)
+#         out = self.classifier(out)
+#         return out
 
 # Training settings
 parser = argparse.ArgumentParser(description='RecVis A3 training script')
@@ -37,16 +54,10 @@ parser.add_argument('--data-pseudo', type=str, default=None, metavar='D',
                     help="folder where data is located. train_images/ and val_images/ need to be found in the folder")
 parser.add_argument('--data-attention', type=str, default=None, metavar='D',
                     help="folder where data is located. train_images/ and val_images/ need to be found in the folder")
-parser.add_argument('--data-no-label', type=str, default=None, metavar='D',
+parser.add_argument('--data-pseudo-2', type=str, default=None, metavar='D',
                     help="folder where data is located. train_images/ and val_images/ need to be found in the folder")
-
-parser.add_argument('--data-no-label-crop', type=str, default=None, metavar='D',
+parser.add_argument('--data-nabirds', type=str, default=None, metavar='D',
                     help="folder where data is located. train_images/ and val_images/ need to be found in the folder")
-parser.add_argument('--data-no-label-attention', type=str, default=None, metavar='D',
-                    help="folder where data is located. train_images/ and val_images/ need to be found in the folder")
-
-
-parser.add_argument('--self', action='store_true', default=False, help='self supervised')
 
 parser.add_argument('--model', type=str, default=None, metavar='D',
                     help="folder where data is located. train_images/ and val_images/ need to be found in the folder")
@@ -71,34 +82,7 @@ parser.add_argument('--num_classes', type=int, default=20, metavar='N',
                     help='number of epochs to train (default: 10)')
 parser.add_argument('--online_da', type=bool, default=True, metavar='N',
                     help='online data augmentaiion')
-# parser.add_argument('--merged', type=bool, default=False, metavar='N',
-#                     help='use several datasets')
 parser.add_argument('--weight-decay', default=2e-4, type=float, help='weight decay')
-# fix match 
-parser.add_argument('--model-ema', type=str, default=None, metavar='D',
-                    help="folder where data is located. train_images/ and val_images/ need to be found in the folder")
-
-parser.add_argument('--eval-step', default=1024, type=int,
-                    help='number of eval steps to run')
-parser.add_argument('--use-ema', action='store_true', default=True,
-                    help='use EMA model')
-parser.add_argument('--ema-decay', default=0.999, type=float,
-                    help='EMA decay rate')
-parser.add_argument('--mu', default=4, type=int,
-                    help='coefficient of unlabeled batch size')
-parser.add_argument('--lambda-u', default=1, type=float,
-                    help='coefficient of unlabeled loss')
-parser.add_argument('--T', default=1, type=float,
-                    help='pseudo label temperature')
-parser.add_argument('--threshold', default=0.9, type=float,
-                    help='pseudo label threshold')
-parser.add_argument('--batch-size-u', default=2, type=int,
-                    help='pseudo label threshold')
-parser.add_argument('--test', default=False, type=bool, help='testing')
-
-
-
-
 
 args = parser.parse_args()
 use_cuda = torch.cuda.is_available()
@@ -116,14 +100,12 @@ MODEL = "EFFICIENT" # EFFICIENT INCEPTION INCEPTIONRESNETV2 VIT BIT RESNEXT
 FREEZE = True
 TRAIN_IMAGES = '/train_images' # '/train_images' '/images
 VALID_IMAGES = '/val_images' #
-TEST_IMAGES = '/test_images'
 VALID = True
 PRETRAIN = False
-CHANNELS = "SINGLE" # "TRIPLE" DOUBLE SINGLE
+CHANNELS = "SINGLE" # "TRIPLE"
 NEW_EVAL = False
 BALANCE_CLASSES = False
-FIX_MATCH = True
-SEMI_SELF = True
+
 if args.online_da:
   train_transform = data_transforms_val
 else:
@@ -174,7 +156,7 @@ if CHANNELS == "DOUBLE":
   data_combined_val = DoubleChannels(args.data + VALID_IMAGES, args.data_crop + VALID_IMAGES, transform = data_transforms_val)
 elif CHANNELS == "TRIPLE":
   data_combined = TripleChannels(args.data + TRAIN_IMAGES, args.data_crop + TRAIN_IMAGES, args.data_attention + TRAIN_IMAGES, transform = data_transforms_val)
-  data_combined_val = TripleChannels(args.data + VALID_IMAGES, args.data_crop + VALID_IMAGES, args.data_attention + TRAIN_IMAGES, transform = data_transforms_val)
+  data_combined_val = TripleChannels(args.data + VALID_IMAGES, args.data_crop + VALID_IMAGES, args.data_attention + VALID_IMAGES, transform = data_transforms_val)
 
 else:
   if args.data_crop:
@@ -196,36 +178,48 @@ else:
     data_pseudo = None
 
   if args.data_attention:
-    data_attention = datasets.ImageFolder(args.data_attention + "/test_images",
+    data_attention = datasets.ImageFolder(args.data_attention + TRAIN_IMAGES,
                           transform=data_transforms_val)
   else:
     data_attention = None
-
-  if args.data_no_label:
-    data_no_label = datasets.ImageFolder(args.data_no_label + TEST_IMAGES,
+  if args.data_pseudo_2:
+    data_pseudo_2 = datasets.ImageFolder(args.data_pseudo_2 + TRAIN_IMAGES,
                           transform=data_transforms_val)
   else:
-    data_no_label = None
+    data_pseudo_2 = None
 
-  if args.data_no_label_crop:
-    data_no_label_crop = datasets.ImageFolder(args.data_no_label_crop + TEST_IMAGES,
+  if args.data_nabirds:
+    data_nabirds = datasets.ImageFolder(args.data_nabirds + '/train_images',
                           transform=data_transforms_val)
   else:
-    data_no_label_crop = None
+    data_nabirds = None
 
-  if args.data_no_label_attention:
-    data_no_label_attention = datasets.ImageFolder(args.data_no_label_attention + TEST_IMAGES,
-                          transform=data_transforms_val)
-  else:
-    data_no_label_attention = None
 
 
 if CHANNELS != "DOUBLE" and CHANNELS != "TRIPLE":
-  if args.data_crop and args.data_mask:
+
+
+
+  if args.data_nabirds and args.data_crop and args.data_attention and args.data_pseudo and args.data_pseudo_2:
+    train_data = ConcatDataset(data_orig, data_crop, data_attention, data_pseudo, data_pseudo_2, data_nabirds)
+   
+    targets += data_crop.targets
+    targets +=  data_attention.targets
+    targets +=  data_pseudo.targets
+    targets +=  data_nabirds.targets
+
+  elif args.data_crop and args.data_attention and args.data_pseudo :
+    train_data = ConcatDataset(data_orig, data_crop, data_attention, data_pseudo)
+   
+    targets += data_crop.targets
+    targets +=  data_attention.targets
+    targets +=  data_pseudo.targets
+
+  elif args.data_crop and args.data_mask:
     train_data = ConcatDataset(data_orig, data_crop, data_mask)
 
-  elif args.data_crop and args.data_pseudo and args.data_attention:
-    train_data = ConcatDataset(data_orig, data_crop, data_pseudo, data_attention)
+  elif args.data_crop and args.data_pseudo:
+    train_data = ConcatDataset(data_orig, data_crop, data_pseudo)
     targets += data_crop.targets
     targets +=  data_pseudo.targets
 
@@ -233,15 +227,13 @@ if CHANNELS != "DOUBLE" and CHANNELS != "TRIPLE":
     train_data = ConcatDataset(data_orig, data_crop, data_attention)
     targets += data_crop.targets
     targets +=  data_attention.targets
-    print(len(targets))
+
   elif args.data_crop:
     train_data = ConcatDataset(data_orig, data_crop)
     targets += data_crop.targets
   else:
     train_data = data_orig
 
-  if args.data_no_label_crop and args.data_no_label_attention:
-    data_no_label = ConcatDataset(data_no_label, data_no_label_crop, data_no_label_attention)
 
 if BALANCE_CLASSES:
   class_sample_count = torch.unique(torch.from_numpy(np.array(targets)), return_counts=True)[1]
@@ -270,12 +262,7 @@ if CHANNELS == "DOUBLE" or CHANNELS == "TRIPLE":
 else:
   train_loader = torch.utils.data.DataLoader(
       train_data,
-      batch_size=args.batch_size, num_workers=1, sampler=torch.utils.data.RandomSampler(data_no_label)) #sampler=sampler
-  if SEMI_SELF:
-    train_no_label_loader = torch.utils.data.DataLoader(
-        data_no_label,
-        batch_size=args.batch_size_u, num_workers=1, sampler=torch.utils.data.RandomSampler(data_no_label)) #sampler=sampler
-
+      batch_size=args.batch_size, num_workers=1, sampler=sampler, shuffle=shuffle) #sampler=sampler
   if VALID:
     val_loader = torch.utils.data.DataLoader(
         data_orig_val,
@@ -312,11 +299,13 @@ elif MODEL == "EFFICIENT":
     model._fc = nn.Linear(2048, args.num_classes)
   else:
     # model = EFFICIENT(args.num_classes)
-    model = EfficientNet.from_pretrained('efficientnet-b6', num_classes=args.num_classes)
-    if args.model:
-        print("loading pretrained model")
-        checkpoint = torch.load(args.model)
-        model.load_state_dict(checkpoint) 
+    model = EfficientNet.from_pretrained('efficientnet-b6', num_classes=7)
+    model2 = EfficientNet.from_pretrained('efficientnet-b6', num_classes=7)
+    model3 = EfficientNet.from_pretrained('efficientnet-b6', num_classes=8)
+    # if args.model:
+    #     print("loading pretrained model")
+    #     checkpoint = torch.load(args.model)
+    #     model.load_state_dict(checkpoint) 
 
     if CHANNELS == "DOUBLE":
       model._conv_stem = Conv2dStaticSamePadding(in_channels=3*2, out_channels=56, kernel_size=(3, 3), stride=2, image_size=(456, 456))
@@ -324,15 +313,34 @@ elif MODEL == "EFFICIENT":
       model._conv_stem = Conv2dStaticSamePadding(in_channels=3*3, out_channels=56, kernel_size=(3, 3), stride=2, image_size=(456, 456))
 
 
+  #   model._fc = nn.Sequential(
+  #         nn.Linear(2304, 256),
+  #         nn.ReLU(),
+  #         nn.Linear(256, 128),
+  #         nn.ReLU(),
+  #         nn.Linear(128, args.num_classes),
+  #       )
+
+  if FREEZE:
+    for name, param in model.named_parameters():
+      if name == '_blocks.43._bn2.bias':
+        break
+      if param.requires_grad:
+          param.requires_grad = False
+    for name, param in model2.named_parameters():
+      if name == '_blocks.43._bn2.bias':
+        break
+      if param.requires_grad:
+          param.requires_grad = False
+    for name, param in model3.named_parameters():
+      if name == '_blocks.43._bn2.bias':
+        break
+      if param.requires_grad:
+          param.requires_grad = False
+
 elif MODEL == "RESNEXT":
   model = torchvision.models.resnext50_32x4d(pretrained=True)
-  model.fc = nn.Sequential(
-      nn.Linear(2048, 256),
-      nn.ReLU(),
-      nn.Linear(256, 128),
-      nn.ReLU(),
-      nn.Linear(128, args.num_classes),
-    )
+  model.fc = nn.Linear(2048, args.num_classes)
   if FREEZE:
     for name, param in model.named_parameters():
       if 'fc' in name:
@@ -372,6 +380,8 @@ if args.model and CHANNELS != 'TRIPLE' and CHANNELS != 'DOUBLE':
     checkpoint = torch.load(args.model)
     model.load_state_dict(checkpoint) 
  
+from model import Net
+# model = Net()
 if use_cuda:
     print('Using GPU')
     if MODEL == "MIX":
@@ -386,33 +396,131 @@ else:
 if MODEL == "MIX":
   optimizer = RangerAdaBelief(list(backbone_specialized.parameters()) + list(model_head.parameters()), lr=args.lr, eps=1e-12, betas=(0.9,0.999))
 else:
-  optimizer = optim.Adam(model.parameters(), lr=args.lr) #momentum=args.momentum
+  # optimizer = optim.Adam(model.parameters(), lr=args.lr) #momentum=args.momentum
 
-  optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum, weight_decay=args.weight_decay) #momentum=args.momentum
+  optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum, weight_decay = args.weight_decay) #momentum=args.momentum
   lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, args.epochs)
+  optimizer2 = optim.SGD(model2.parameters(), lr=args.lr, momentum=args.momentum, weight_decay = args.weight_decay) #momentum=args.momentum
+  lr_scheduler2 = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer2, args.epochs)
+  optimizer3 = optim.SGD(model3.parameters(), lr=args.lr, momentum=args.momentum, weight_decay = args.weight_decay) #momentum=args.momentum
+  lr_scheduler3 = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer3, args.epochs)
 
   # optimizer = AdaBelief(model.parameters(), lr=args.lr, eps=1e-16, betas=(0.9,0.999), weight_decouple = True, rectify = False)
   # optimizer = RangerAdaBelief(model.parameters(), lr=args.lr, eps=1e-12, betas=(0.9,0.999))
   # lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, args.epochs)
 
 
+def train(epoch):
+    lr_scheduler.step()
+    lr_scheduler2.step()
+    lr_scheduler3.step()
+    model.train()
+    model2.train()
+    model3.train()
+    correct = 0
+    for batch_idx, (data, target) in enumerate(train_loader):
+        
+        if target.numpy().any() >= 20 and target.numpy().any() < 0:
+            print(target.numpy())
+            continue
+        if use_cuda:
+            data, target = data.cuda(), target.cuda()
+        optimizer.zero_grad()
+        
+        
+        output = model(data)
+        output2 = model2(data)
+        output3 = model3(data)
+      
+        criterion = torch.nn.CrossEntropyLoss(reduction='mean')
+        criterion2 = torch.nn.CrossEntropyLoss(reduction='mean')
+        criterion3 = torch.nn.CrossEntropyLoss(reduction='mean')
+
+        target = target +1
+        mask = target.le(7).long() * target.ge(1).long()
+        mask2 = target.le(13).long() * target.ge(8).long()
+        mask3 = target.ge(14).long()
 
 
+        loss = criterion(output, target * mask)
+        loss2 = criterion2(output2, target * mask2)
+        loss3 = criterion3(output3, target * mask3)
+
+        # loss.requres_grad = True
+
+        loss.backward()
+        optimizer.step()
+
+        loss2.backward()
+        optimizer2.step()
+
+        loss3.backward()
+        optimizer3.step()
+
+        # pred = output.data.max(1, keepdim=True)[1]
+        # correct += pred.eq(target.data.view_as(pred)).cpu().sum()
+
+        if batch_idx % args.log_interval == 0:
+            print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f} Loss2: {:.6f} Loss3: {:.6f}'.format(
+                epoch, batch_idx * len(data), len(train_loader.dataset),
+                100. * batch_idx / len(train_loader), loss.data.item(), loss2.data.item(), loss3.data.item()))
 
 def validation(val_loader):
     model.eval()
-    if args.self:
-      classifier.eval()
+    model2.eval()
+    model3.eval()
     validation_loss = 0
     correct = 0
     for data, target in val_loader:
         if use_cuda:
             data, target = data.cuda(), target.cuda()
-        if args.self:
-          output = model(data)
-          output = classifier(output)
-        else:
-          output = model(data)
+        output = model(data)
+        output2 = model2(data)
+        output3 = model3(data)
+        # sum up batch loss
+        criterion = torch.nn.CrossEntropyLoss(reduction='mean')
+        validation_loss += criterion(output, target).data.item()
+        # get the index of the max log-probability
+        score, pred = output.data.max(1, keepdim=True)
+        score2, pred2 = output2.data.max(1, keepdim=True)
+        score3, pred3 = output3.data.max(1, keepdim=True)
+
+        
+        output_ensemble = torch.cat((pred , pred2, pred3 ) , dim=0)
+        mask = output_ensemble.gt(0)
+
+        output_ensemble_score = torch.cat((score, score2, score3) , dim=0)
+        output_ensemble_score = output_ensemble_score * mask
+
+        max_idx = output_ensemble_score.max(0)[1].item()
+        pred_ensemble = output_ensemble[max_idx] -1 
+
+        correct += pred.eq(target.data.view_as(pred_ensemble)).cpu().sum()
+
+    validation_loss /= len(val_loader.dataset)
+    print('\nValidation set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)'.format(
+        validation_loss, correct, len(val_loader.dataset),
+        100. * correct / len(val_loader.dataset)))
+
+def validation_mix(val_loader):
+    backbone_specialized.eval()
+    backbone_generalized.eval()
+    model_head.eval()
+
+    validation_loss = 0
+    correct = 0
+    for data, target in val_loader:
+        if use_cuda:
+            data, target = data.cuda(), target.cuda()
+
+        general_embedd = backbone_generalized(data)
+        special_embedd = backbone_specialized(data)
+
+        concat_embedd = torch.cat((special_embedd, special_embedd), dim=1)
+        output = model_head(concat_embedd)
+
+
+        # output = model(data)
         # sum up batch loss
         criterion = torch.nn.CrossEntropyLoss(reduction='mean')
         validation_loss += criterion(output, target).data.item()
@@ -424,122 +532,77 @@ def validation(val_loader):
     print('\nValidation set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)'.format(
         validation_loss, correct, len(val_loader.dataset),
         100. * correct / len(val_loader.dataset)))
+def train_mix(epoch):
+    # lr_scheduler.step()
+    backbone_generalized.train(False)
+    backbone_specialized.train()   
+    model_head.train() 
+    for batch_idx, (data, target) in enumerate(train_loader):
+        
+        if target.numpy().any() >= 20 and target.numpy().any() < 0:
+            print(target.numpy())
+            continue
+        if use_cuda:
+            data, target = data.cuda(), target.cuda()
+        optimizer.zero_grad()
+        
+        
+        general_embedd = backbone_generalized(data)
+        special_embedd = backbone_specialized(data)
 
+        concat_embedd = torch.cat((special_embedd, special_embedd), dim=1)
+        output = model_head(concat_embedd)
 
+        criterion = torch.nn.CrossEntropyLoss(reduction='mean')
+        loss = criterion(output, target)
+        # loss.requres_grad = True
+
+        loss.backward()
+        optimizer.step()
+        if batch_idx % args.log_interval == 0:
+            print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
+                epoch, batch_idx * len(data), len(train_loader.dataset),
+                100. * batch_idx / len(train_loader), loss.data.item()))
 
 model_name = "/" + args.name
-
-
-if SEMI_SELF:
-  labeled_iter = iter(train_loader)
-  unlabeled_iter = iter(train_no_label_loader)
-
-
-device = torch.device('cuda')
-
-print("train_loader size = ", len(train_loader))
-print("loader no label size = ", len(train_no_label_loader))
-
-
-args.device = device
-args.resume = False
-if args.self:
-  model._fc = nn.Linear(2048, 256)
-
-classifier_rot =   nn.Sequential(
-          nn.Linear(256, 128),
-          nn.ReLU(),
-          nn.Linear(128, 1),
-        )
-classifier = nn.Linear(256, args.num_classes)
-loss_rot = nn.MSELoss()
-lambda_u_semi = 1
-lambda_u_self = 1
+model.cuda()
+model2.cuda()
+model3.cuda()
 
 for epoch in range(1, args.epochs + 1):
-  lr_scheduler.step()
-  for batch_idx in range(args.eval_step):
-      try:
-          inputs_x, targets_x = labeled_iter.next()
-      except:
-          labeled_iter = iter(train_loader)
-          inputs_x, targets_x = labeled_iter.next()
-
-      try:
-          inputs_u, _ = unlabeled_iter.next()
-      except:
-          unlabeled_iter = iter(train_no_label_loader)
-          inputs_u, _ = unlabeled_iter.next()
-
-      optimizer.zero_grad()
-      batch_size = inputs_x.shape[0]
-      # inputs = interleave(
-      #     torch.cat((inputs_x, inputs_u_w, inputs_u_s)), 2*args.batch_size_u+1).to(device)
-
-      ### rotate 
-      if args.self:
-        angle = np.random.randint(-30, 30)
-        inputs_u_rot = TF.rotate(inputs_x, angle)
-
-        inputs = torch.cat((inputs_x, inputs_u, inputs_u_rot)).to(device)
+    if MODEL == "MIX":
+      train_mix(epoch)
+    else:
+      train(epoch)
+    if VALID:
+      if MODEL == "MIX":
+        validation_mix(val_loader)
       else:
-        inputs = torch.cat((inputs_x, inputs_u)).to(device)
-      targets_x = targets_x.to(device)
-      if args.self:
-        features = model(inputs)
-        logits = classifier(features)
-        logits_rot = classifier_rot(features)
-      else:
-        logits = model(inputs)
+        validation(val_loader)
+      if args.data_crop and CHANNELS != "DOUBLE" and CHANNELS != "TRIPLE":
+        print("validation on cropped")
+        if MODEL == "MIX":
+          validation_mix(val_loader_crop)
+        else:
+          validation(val_loader_crop)
+    if MODEL == "MIX":
+      model_file_back = args.experiment + model_name +'_back_' + '_model_' + str(epoch) + '.pth'
+      torch.save(backbone_specialized.state_dict(), model_file_back)
 
-      # logits = de_interleave(logits, 2*args.batch_size_u+1)
-      if args.self:
-        logits_x = logits[:batch_size]
-        logits_u, _ = logits[batch_size:].chunk(2)
-        _, logits_rot_u = logits_rot[batch_size:].chunk(2)
-      else:
-        logits_x = logits[:batch_size]
-        try:
-          logits_u, _ = logits[batch_size:].chunk(2)
-        except ValueError:
-          logits_u = logits[batch_size:].chunk(1)[0]
+      model_file_head = args.experiment + model_name +'_head_' + '_model_' + str(epoch) + '.pth'
+      torch.save(model_head.state_dict(), model_file_head)
+      print('Saved model to ' + model_file_back + '. You can run `python evaluate.py --model ' + model_file_back + '` to generate the Kaggle formatted csv file\n')
+      print('Saved model to ' + model_file_head + '. You can run `python evaluate.py --model ' + model_file_head + '` to generate the Kaggle formatted csv file\n')
+    else:
+      
+      model_file = args.experiment + model_name +  '_model_1_' + str(epoch) + '.pth'
+      torch.save(model.state_dict(), model_file)
+      print('Saved model to ' + model_file + '. You can run `python evaluate.py --model ' + model_file + '` to generate the Kaggle formatted csv file\n')
 
-     
-      del logits
+      model_file2 = args.experiment + model_name +  '_model_2_' + str(epoch) + '.pth'
+      torch.save(model.state_dict(), model_file2)
+      print('Saved model to ' + model_file2 + '. You can run `python evaluate.py --model ' + model_file2 + '` to generate the Kaggle formatted csv file\n')
 
-      Lx = F.cross_entropy(logits_x, targets_x, reduction='mean')
-
-      pseudo_label = torch.softmax(logits_u/args.T, dim=-1)
-      max_probs, targets_u = torch.max(pseudo_label, dim=-1)
-      mask = max_probs.ge(args.threshold).float()
-      Lu_semi = (F.cross_entropy(logits_u, targets_u,
-                            reduction='none') * mask).mean()
-      if args.self:
-        Lu_self = (loss_rot(logits_rot_u, angle,
-                          reduction='none') * ~mask).mean()
-
-        loss = Lx + lambda_u_semi * Lu_semi + lambda_u_self*Lu_self
-
-      else:
-        loss = Lx + lambda_u_semi * Lu_semi
-      loss.backward()
-
-      optimizer.step()
-     
-
-      model.zero_grad()
-      if batch_idx % args.log_interval == 0:
-        print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f} \tLoss_x: {:.6f} \tLoss_u: {:.6f} '.format(
-            epoch, batch_idx , args.eval_step,
-            100. * batch_idx / len(train_loader), loss.data.item(), Lx.data.item(), Lu_semi.data.item()))
-
-  validation(val_loader)
-  if not args.test:
-    model_file = args.experiment + model_name +  '_model_' + str(epoch) + '.pth'
-    torch.save(model.state_dict(), model_file)
-    if args.self:
-      model_file_classifier = args.experiment + model_name +  'class_model_' + str(epoch) + '.pth'
-      torch.save(classifier.state_dict(), model_file_classifier)
-      print('Saved model to ' + model_file_classifier + '. You can run `python evaluate.py --model ' + model_file + '` to generate the Kaggle formatted csv file\n')
-
-
+      model_file3 = args.experiment + model_name +  '_model_3_' + str(epoch) + '.pth'
+      torch.save(model.state_dict(), model_file3)
+      print('Saved model to ' + model_file3 + '. You can run `python evaluate.py --model ' + model_file3 + '` to generate the Kaggle formatted csv file\n')

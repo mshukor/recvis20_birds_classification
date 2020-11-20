@@ -28,36 +28,48 @@ parser.add_argument('--outfile', type=str, default='experiment/kaggle.csv', meta
                     help="name of the output csv file")
 parser.add_argument('--model2', type=str, metavar='M', default=None,
                     help="the model file to be evaluated. Usually it is of the form model_X.pth")
+parser.add_argument('--model1', type=str, metavar='M', default=None,
+                    help="the model file to be evaluated. Usually it is of the form model_X.pth")
 
 args = parser.parse_args()
 use_cuda = torch.cuda.is_available()
 
 if use_cuda:
   state_dict = torch.load(args.model)
+  state_dict1 = torch.load(args.model1)
+  # state_dict2 = torch.load(args.model2)
 else:
   state_dict = torch.load(args.model, map_location=torch.device('cpu'))
 
 from efficientnet_pytorch import EfficientNet
 
 model = EfficientNet.from_pretrained('efficientnet-b6', num_classes=20)
+model1 = EfficientNet.from_pretrained('efficientnet-b6', num_classes=20)
+# model2 = EfficientNet.from_pretrained('efficientnet-b6', num_classes=20)
 
 
 # model = inception_v3(pretrained=False)
 # model.fc = nn.Linear(2048, 20)
-if args.model2:
-  model2 = torchvision.models.resnext50_32x4d(pretrained=True)
-  model2.fc = nn.Linear(2048, 20)
-  state_dict2 = torch.load(args.model2)
-  model2.load_state_dict(state_dict2)
-  model2.eval()
-  model2.cuda()
+# if args.model2:
+#   model2 = torchvision.models.resnext50_32x4d(pretrained=True)
+#   model2.fc = nn.Linear(2048, 20)
+#   state_dict2 = torch.load(args.model2)
+#   model2.load_state_dict(state_dict2)
+#   model2.eval()
+#   model2.cuda()
 
 model.load_state_dict(state_dict)
 model.eval()
+model1.load_state_dict(state_dict1)
+model1.eval()
+# model2.load_state_dict(state_dict2)
+# model2.eval()
 
 if use_cuda:
     print('Using GPU')
     model.cuda()
+    model1.cuda()
+    # model2.cuda()
 else:
     print('Using CPU')
 
@@ -153,16 +165,17 @@ for d in tqdm(os.listdir(test_dir)):
           # cls_mask = classes_to_names[int(pred_mask.item())].split(".")[1]
           # if cls_mask.lower() in f.lower():
           #   correct_mask+=1
-          if args.model2:
-            output_mask = model2(data)
-            pred_mask_score, pred_mask = output_mask.data.max(1, keepdim=False)
-            cls_mask = classes_to_names[int(pred_mask.item())].split(".")[1]
-            if cls_mask.lower() in f.lower():
-              correct_mask+=1
+          # if args.model2:
+          #   output_mask = model2(data)
+          #   pred_mask_score, pred_mask = output_mask.data.max(1, keepdim=False)
+          #   cls_mask = classes_to_names[int(pred_mask.item())].split(".")[1]
+          #   if cls_mask.lower() in f.lower():
+          #     correct_mask+=1
 
 
 
-          output_crop = model(data_crop)
+          # output_crop = model(data_crop)
+          output_crop = model1(data_crop)
           pred_crop_score, pred_crop = output_crop.data.max(1, keepdim=False)
           cls_crop = classes_to_names[int(pred_crop.item())].split(".")[1]
           if cls_crop.lower() in f.lower():
@@ -174,27 +187,30 @@ for d in tqdm(os.listdir(test_dir)):
           # if cls_aug.lower() in f.lower():
           #   correct_aug+=1
 
-          output_attention = model(data_attention)
+          # output_attention = model(data_attention)
+          output_attention = model1(data_crop)
           pred_attention_score, pred_attention = output_attention.data.max(1, keepdim=False)
           cls_attention = classes_to_names[int(pred_attention.item())].split(".")[1]
           if cls_attention.lower() in f.lower():
             correct_attention+=1
           
 
-          output_ensemble = torch.cat((pred, pred_mask, pred_crop, pred_attention) , dim=0)
-          output_ensemble_score = torch.cat((pred_score, pred_mask_score, pred_crop_score, pred_attention_score) , dim=0)
+          output_ensemble = torch.cat((pred, pred_crop, pred_attention) , dim=0)
+          output_ensemble_score = torch.cat((pred_score, pred_crop_score, pred_attention_score) , dim=0)
 
+          output_ensemble = (pred +  pred_crop +  pred_attention)/3
           max_idx = output_ensemble_score.max(0)[1].item()
-          pred_ensemble = output_ensemble[max_idx]
+          pred_ensemble = output_ensemble_score.max(0)[0].item()
+          # pred_ensemble = output_ensemble[max_idx]
           
 
           # output_ensemble = ( output_crop + output_mask + output) / 3
           # pred_ensemble = output_ensemble.data.max(1, keepdim=False)[1]
           
-          cls_ensemble = classes_to_names[int(pred_ensemble.item())].split(".")[1]
+          cls_ensemble = classes_to_names[int(pred_ensemble)].split(".")[1]
           if cls_ensemble.lower() in f.lower():
             correct_ensemble+=1
 
-print("correct", correct, "correct_attention", correct_attention, "correct_mask", correct_mask, "correct_crop", correct_crop, "correct_ensemble", correct_ensemble)
-print("correct", correct/len_data ,"correct_attention", correct_attention/len_data, "correct_mask", correct_mask/len_data, "correct_crop", correct_crop/len_data, "correct_ensemble", correct_ensemble/len_data)
+print("correct", correct, "correct_attention", correct_attention, "correct_crop", correct_crop, "correct_ensemble", correct_ensemble)
+print("correct", correct/len_data ,"correct_attention", correct_attention/len_data, "correct_crop", correct_crop/len_data, "correct_ensemble", correct_ensemble/len_data)
   

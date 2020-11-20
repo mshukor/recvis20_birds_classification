@@ -39,13 +39,13 @@ else:
 from efficientnet_pytorch import EfficientNet
 
 
-if args.model2:
-  model2 = torchvision.models.resnext50_32x4d(pretrained=True)
-  model2.fc = nn.Linear(2048, 20)
-  state_dict2 = torch.load(args.model2)
-  model2.load_state_dict(state_dict2)
-  model2.eval()
-  model2.cuda()
+# if args.model2:
+#   model2 = torchvision.models.resnext50_32x4d(pretrained=True)
+#   model2.fc = nn.Linear(2048, 20)
+#   state_dict2 = torch.load(args.model2)
+#   model2.load_state_dict(state_dict2)
+#   model2.eval()
+#   model2.cuda()
 
 model = EfficientNet.from_pretrained('efficientnet-b6', num_classes=20)
 
@@ -68,6 +68,12 @@ test_dir_crop = args.data_crop + '/test_images/mistery_category'
 test_dir_attention = args.data_attention + '/test_images/mistery_category'
 test_dir_mask = args.data_mask + '/test_images/mistery_category'
 
+model1 = EfficientNet.from_pretrained('efficientnet-b6', num_classes=20)
+
+state_dict1 = torch.load(args.model2)
+model1.load_state_dict(state_dict1)
+model1.eval()
+model1.cuda()
 
 def pil_loader(path):
     # open path as file to avoid ResourceWarning (https://github.com/python-pillow/Pillow/issues/835)
@@ -124,23 +130,23 @@ for f in tqdm(os.listdir(test_dir)):
           data_crop = data_crop.cuda().unsqueeze(0)
           data_attention = data_attention.cuda().unsqueeze(0)
 
-      output = model(data)
+      output = model(data_crop)
       pred_score, pred = output.data.max(1, keepdim=False)
   
 
-      output_mask = model(data_mask)
-      pred_mask_score, pred_mask = output_mask.data.max(1, keepdim=False)
+      # output_mask = model(data_crop)
+      # pred_mask_score, pred_mask = output_mask.data.max(1, keepdim=False)
   
 
-      output_crop = model(data_crop)
+      output_crop = model1(data_crop)
       pred_crop_score, pred_crop = output_crop.data.max(1, keepdim=False)
    
 
 
       
 
-      output_ensemble = torch.cat((pred, pred_mask, pred_crop) , dim=0)
-      output_ensemble_score = torch.cat((pred_score, pred_mask_score, pred_crop_score) , dim=0)
+      output_ensemble = torch.cat((pred, pred_crop) , dim=0)
+      output_ensemble_score = torch.cat((pred_score, pred_crop_score) , dim=0)
 
       max_idx = output_ensemble_score.max(0)[1].item()
       pred_ensemble = output_ensemble[max_idx]

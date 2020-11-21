@@ -105,7 +105,8 @@ for f in tqdm(os.listdir(test_dir)):
   if 'jpg' in f:
     
       len_data+=1
-      data = data_transforms(pil_loader(test_dir + '/' + f))
+      img = pil_loader(test_dir + '/' + f)
+      data = data_transforms(img)
       # data = data.view(1, data.size(0), data.size(1), data.size(2))
 
       try:

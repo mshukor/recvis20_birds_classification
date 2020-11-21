@@ -15,14 +15,14 @@ from sklearn.model_selection import train_test_split
 import numpy as np
 import timm
 import torchvision.transforms as transforms
-import bit_torch_models as models
+import bit_torch_models as bit_models
 # from models import EFFICIENT
 import torch.nn.functional as F
 import torchvision
 from data import DoubleChannels, TripleChannels
 from efficientnet_pytorch import EfficientNet
 from efficientnet_pytorch.utils import Conv2dStaticSamePadding
-
+import torchvision.models as models 
 # class EFFICIENT(nn.Module):
 #     def __init__(self, num_classes):
 #         super(EFFICIENT, self).__init__()
@@ -189,7 +189,7 @@ else:
     data_pseudo_2 = None
 
   if args.data_nabirds:
-    data_nabirds = datasets.ImageFolder(args.data_nabirds + '/train_images',
+    data_nabirds = datasets.ImageFolder(args.data_nabirds + '/val_images',
                           transform=data_transforms_val)
   else:
     data_nabirds = None
@@ -200,11 +200,11 @@ if CHANNELS != "DOUBLE" and CHANNELS != "TRIPLE":
 
 
 
-  if args.data_nabirds and args.data_crop and args.data_attention and args.data_pseudo and args.data_pseudo_2:
-    train_data = ConcatDataset(data_orig, data_crop, data_attention, data_pseudo, data_pseudo_2, data_nabirds)
+  if args.data_nabirds and args.data_crop  and args.data_pseudo and args.data_pseudo_2:
+    train_data = ConcatDataset(data_orig, data_crop, data_pseudo, data_pseudo_2, data_nabirds)
    
     targets += data_crop.targets
-    targets +=  data_attention.targets
+    # targets +=  data_attention.targets
     targets +=  data_pseudo.targets
     targets +=  data_nabirds.targets
 
@@ -300,7 +300,7 @@ elif MODEL == "EFFICIENT":
     model._fc = nn.Linear(2048, args.num_classes)
   else:
     # model = EFFICIENT(args.num_classes)
-    model = EfficientNet.from_pretrained('efficientnet-b6', num_classes=args.num_classes)
+    model = EfficientNet.from_pretrained('efficientnet-b4', num_classes=args.num_classes)
     if args.model:
         print("loading pretrained model")
         checkpoint = torch.load(args.model)
@@ -338,18 +338,20 @@ elif MODEL == "RESNEXT":
           param.requires_grad = False
 
 elif MODEL == "INCEPTION":
-  model = inception_v3(pretrained=False)
-  model.fc = nn.Linear(2048, 8142)
-  print("loading pretrained model")
-  checkpoint = torch.load("iNat_2018_InceptionV3.pth.tar")
-  model.load_state_dict(checkpoint['state_dict']) 
+  model = models.inception_v3(pretrained=True)
+  # model = inception_v3(pretrained=False)
+
   model.fc = nn.Linear(2048, args.num_classes)
+  # print("loading pretrained model")
+  # checkpoint = torch.load("iNat_2018_InceptionV3.pth.tar")
+  # model.load_state_dict(checkpoint['state_dict']) 
+  # model.fc = nn.Linear(2048, args.num_classes)
   model.aux_logits = False
-  if FREEZE:
-    for name, param in model.named_parameters():
-        if param.requires_grad:
-            if name.split(".")[0] not in ["Mixed_6e", "AuxLogits", "Mixed_7a", "Mixed_7b", "Mixed_7c", "fc"]:
-              param.requires_grad = False
+  # if FREEZE:
+  #   for name, param in model.named_parameters():
+  #       if param.requires_grad:
+  #           if name.split(".")[0] not in ["Mixed_6e", "AuxLogits", "Mixed_7a", "Mixed_7b", "Mixed_7c", "fc"]:
+  #             param.requires_grad = False
 elif MODEL == "INCEPTIONRESNETV2":
   model_name = 'inceptionresnetv2' # could be fbresnet152 or inceptionresnetv2
   model = pretrainedmodels.__dict__[model_name](num_classes=1000, pretrained='imagenet')
@@ -361,8 +363,8 @@ elif MODEL == "BIT":
   model = models.KNOWN_MODELS['BiT-M-R101x1'](head_size= args.num_classes, zero_head=True)
   model.load_from(np.load('BiT-M-R101x1.npz'))
 elif MODEL == "RESNET":
-  model = torch.hub.load('pytorch/vision:v0.6.0', 'resnet18', pretrained=True)  
-  model.fc = nn.Linear(512, args.num_classes, bias = True)
+  model = torch.hub.load('pytorch/vision:v0.6.0', 'resnet101', pretrained=True)  
+  model.fc = nn.Linear(2048, args.num_classes, bias = True)
 
 print("USING : ", CHANNELS)
 
@@ -509,7 +511,6 @@ def train_mix(epoch):
             print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
                 epoch, batch_idx * len(data), len(train_loader.dataset),
                 100. * batch_idx / len(train_loader), loss.data.item()))
-
 model_name = "/" + args.name
 for epoch in range(1, args.epochs + 1):
     if MODEL == "MIX":

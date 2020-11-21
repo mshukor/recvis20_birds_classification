@@ -43,6 +43,10 @@ parser.add_argument('--data-no-label-crop', type=str, default=None, metavar='D',
                     help="folder where data is located. train_images/ and val_images/ need to be found in the folder")
 parser.add_argument('--data-no-label-attention', type=str, default=None, metavar='D',
                     help="folder where data is located. train_images/ and val_images/ need to be found in the folder")
+parser.add_argument('--data-no-label-nabirds', type=str, default=None, metavar='D',
+                    help="folder where data is located. train_images/ and val_images/ need to be found in the folder")
+parser.add_argument('--data-no-label-inat', type=str, default=None, metavar='D',
+                    help="folder where data is located. train_images/ and val_images/ need to be found in the folder")
 
 
 
@@ -216,8 +220,21 @@ else:
   else:
     data_no_label_attention = None
 
+  if args.data_no_label_nabirds:
+    data_no_label_nabirds = datasets.ImageFolder(args.data_no_label_nabirds + '/images',
+                          transform=TransformFixMatch())
+  else:
+    data_no_label_nabirds = None
+
+  if args.data_no_label_inat:
+    data_no_label_inat = datasets.ImageFolder(args.data_no_label_inat + '/Inat_mini2',
+                          transform=TransformFixMatch())
+  else:
+    data_no_label_inat = None
 
 if CHANNELS != "DOUBLE" and CHANNELS != "TRIPLE":
+
+ 
   if args.data_crop and args.data_mask:
     train_data = ConcatDataset(data_orig, data_crop, data_mask)
 
@@ -237,7 +254,9 @@ if CHANNELS != "DOUBLE" and CHANNELS != "TRIPLE":
   else:
     train_data = data_orig
 
-  if args.data_no_label_crop and args.data_no_label_attention:
+  if args.data_no_label_inat and args.data_no_label_nabirds and args.data_no_label_crop:
+    data_no_label = ConcatDataset(data_no_label, data_no_label_crop, data_no_label_inat, data_no_label_nabirds)
+  elif args.data_no_label_crop and args.data_no_label_attention:
     data_no_label = ConcatDataset(data_no_label, data_no_label_crop, data_no_label_attention)
 
 if BALANCE_CLASSES:

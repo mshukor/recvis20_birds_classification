@@ -47,7 +47,7 @@ def normalize8(I):
 
 DATA = args.dir
  
-TEST_IMAGES = '/images' # '/test_images' 'train_images
+TEST_IMAGES = '/train_images' # '/test_images' 'train_images
 model_path = args.model
 model_path2 = args.model2
 RESIZE = 500 #None
@@ -156,10 +156,10 @@ def pseudo_annotate():
         # image = Image.fromarray(normalize8(image)).convert('RGB')
         # image = cv2.cvtColor(normalize8(image), cv2.COLOR_BGR2RGB)
         image = normalize8(image)
-        print(confidence[0].item(), count)
+        print(confidence[0].item(), count, args.thresh*100)
         if confidence[0] > args.thresh*100:
           count +=1
-          print(count)
+          # print(count)
           if not args.test:
             plt.imsave(output_folder_pseudo+'/'+'train_images'+'/'+folder_name+'/'+folder_name.split(".")[1] + "_" + str(count) + ".jpg", image, dpi=1000)
         else:

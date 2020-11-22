@@ -23,6 +23,7 @@ from data import DoubleChannels, TripleChannels
 from efficientnet_pytorch import EfficientNet
 from efficientnet_pytorch.utils import Conv2dStaticSamePadding
 from data import TransformFixMatch
+import torchvision.transforms.functional as TF
 
 # Training settings
 parser = argparse.ArgumentParser(description='RecVis A3 training script')
@@ -43,16 +44,9 @@ parser.add_argument('--data-no-label-crop', type=str, default=None, metavar='D',
                     help="folder where data is located. train_images/ and val_images/ need to be found in the folder")
 parser.add_argument('--data-no-label-attention', type=str, default=None, metavar='D',
                     help="folder where data is located. train_images/ and val_images/ need to be found in the folder")
-parser.add_argument('--data-no-label-nabirds', type=str, default=None, metavar='D',
-                    help="folder where data is located. train_images/ and val_images/ need to be found in the folder")
-parser.add_argument('--data-no-label-inat', type=str, default=None, metavar='D',
-                    help="folder where data is located. train_images/ and val_images/ need to be found in the folder")
-parser.add_argument('--data-no-label-inat-crop', type=str, default=None, metavar='D',
-                    help="folder where data is located. train_images/ and val_images/ need to be found in the folder")
-parser.add_argument('--data-no-label-nabirds-crop', type=str, default=None, metavar='D',
-                    help="folder where data is located. train_images/ and val_images/ need to be found in the folder")
 
 
+parser.add_argument('--self', action='store_true', default=False, help='self supervised')
 
 parser.add_argument('--model', type=str, default=None, metavar='D',
                     help="folder where data is located. train_images/ and val_images/ need to be found in the folder")
@@ -86,7 +80,7 @@ parser.add_argument('--model-ema', type=str, default=None, metavar='D',
 
 parser.add_argument('--eval-step', default=1024, type=int,
                     help='number of eval steps to run')
-parser.add_argument('--use-ema', action='store_true', default=False,
+parser.add_argument('--use-ema', action='store_true', default=True,
                     help='use EMA model')
 parser.add_argument('--ema-decay', default=0.999, type=float,
                     help='EMA decay rate')
@@ -127,15 +121,16 @@ VALID = True
 PRETRAIN = False
 CHANNELS = "SINGLE" # "TRIPLE" DOUBLE SINGLE
 NEW_EVAL = True
-BALANCE_CLASSES = True
+BALANCE_CLASSES = False
 FIX_MATCH = True
+SEMI_SELF = True
 if args.online_da:
   train_transform = data_transforms_val
 else:
   train_transform = data_transforms_train
   
 def train_val_dataset(dataset, val_split=0.055):
-    train_idx, val_idx = train_test_split(list(range(len(dataset))), test_size=val_split)
+    train_idx, val_idx = train_test_split(list(range(len(dataset))), test_size=val_split, random_state=11)
     datasets = {}
     dataset_train = torch.utils.data.Subset(dataset, train_idx)
     dataset_val = torch.utils.data.Subset(dataset, val_idx)
@@ -208,54 +203,29 @@ else:
 
   if args.data_no_label:
     data_no_label = datasets.ImageFolder(args.data_no_label + TEST_IMAGES,
-                          transform=TransformFixMatch())
+                          transform=data_transforms_val)
   else:
     data_no_label = None
 
   if args.data_no_label_crop:
     data_no_label_crop = datasets.ImageFolder(args.data_no_label_crop + TEST_IMAGES,
-                          transform=TransformFixMatch())
+                          transform=data_transforms_val)
   else:
     data_no_label_crop = None
 
   if args.data_no_label_attention:
     data_no_label_attention = datasets.ImageFolder(args.data_no_label_attention + TEST_IMAGES,
-                          transform=TransformFixMatch())
+                          transform=data_transforms_val)
   else:
     data_no_label_attention = None
 
-  if args.data_no_label_nabirds:
-    data_no_label_nabirds = datasets.ImageFolder(args.data_no_label_nabirds + '/images',
-                          transform=TransformFixMatch())
-  else:
-    data_no_label_nabirds = None
-
-  if args.data_no_label_inat:
-    data_no_label_inat = datasets.ImageFolder(args.data_no_label_inat + '/Inat_mini2',
-                          transform=TransformFixMatch())
-  else:
-    data_no_label_inat = None
-
-  if args.data_no_label_inat_crop:
-    data_no_label_inat_crop = datasets.ImageFolder(args.data_no_label_inat_crop + '/Inat_mini2',
-                          transform=TransformFixMatch())
-  else:
-    data_no_label_inat_crop = None
-
-  if args.data_no_label_nabirds_crop:
-    data_no_label_nabirds_crop = datasets.ImageFolder(args.data_no_label_nabirds_crop + '/images',
-                          transform=TransformFixMatch())
-  else:
-    data_no_label_nabirds_crop = None
 
 if CHANNELS != "DOUBLE" and CHANNELS != "TRIPLE":
-
- 
   if args.data_crop and args.data_mask:
     train_data = ConcatDataset(data_orig, data_crop, data_mask)
 
-  elif args.data_crop and args.data_pseudo:
-    train_data = ConcatDataset(data_orig, data_crop, data_pseudo)
+  elif args.data_crop and args.data_pseudo and args.data_attention:
+    train_data = ConcatDataset(data_orig, data_crop, data_pseudo, data_attention)
     targets += data_crop.targets
     targets +=  data_pseudo.targets
 
@@ -263,21 +233,14 @@ if CHANNELS != "DOUBLE" and CHANNELS != "TRIPLE":
     train_data = ConcatDataset(data_orig, data_crop, data_attention)
     targets += data_crop.targets
     targets +=  data_attention.targets
-
+    print(len(targets))
   elif args.data_crop:
     train_data = ConcatDataset(data_orig, data_crop)
     targets += data_crop.targets
   else:
     train_data = data_orig
 
-  if args.data_no_label_inat and args.data_no_label_nabirds and args.data_no_label_crop and args.data_no_label_inat_crop and args.data_no_label_nabirds_crop:
-    data_no_label = ConcatDataset(data_no_label_inat, data_no_label_nabirds, data_no_label_inat_crop, data_no_label_nabirds_crop)
-    data_no_label_test = ConcatDataset(data_no_label, data_no_label_crop)
-
-  elif args.data_no_label_inat and args.data_no_label_nabirds and args.data_no_label_crop:
-    data_no_label = ConcatDataset(data_no_label_inat, data_no_label_nabirds)
-    data_no_label_test = ConcatDataset(data_no_label, data_no_label_crop)
-  elif args.data_no_label_crop and args.data_no_label_attention:
+  if args.data_no_label_crop and args.data_no_label_attention:
     data_no_label = ConcatDataset(data_no_label, data_no_label_crop, data_no_label_attention)
 
 if BALANCE_CLASSES:
@@ -307,14 +270,12 @@ if CHANNELS == "DOUBLE" or CHANNELS == "TRIPLE":
 else:
   train_loader = torch.utils.data.DataLoader(
       train_data,
-      batch_size=args.batch_size, num_workers=1, sampler=sampler, shuffle=shuffle) #sampler=sampler
-  if FIX_MATCH:
+      batch_size=args.batch_size, num_workers=1, sampler=torch.utils.data.RandomSampler(data_no_label)) #sampler=sampler
+  if SEMI_SELF:
     train_no_label_loader = torch.utils.data.DataLoader(
         data_no_label,
-        batch_size=args.batch_size_u, num_workers=1, sampler=sampler, shuffle=shuffle) #sampler=sampler
-    train_loader_no_label_test = torch.utils.data.DataLoader(
-        data_no_label_test,
-        batch_size=args.batch_size_u, num_workers=1, shuffle=True) 
+        batch_size=args.batch_size_u, num_workers=1, sampler=torch.utils.data.RandomSampler(data_no_label)) #sampler=sampler
+
   if VALID:
     val_loader = torch.utils.data.DataLoader(
         data_orig_val,
@@ -362,21 +323,6 @@ elif MODEL == "EFFICIENT":
     if CHANNELS == "TRIPLE":
       model._conv_stem = Conv2dStaticSamePadding(in_channels=3*3, out_channels=56, kernel_size=(3, 3), stride=2, image_size=(456, 456))
 
-
-  #   model._fc = nn.Sequential(
-  #         nn.Linear(2304, 256),
-  #         nn.ReLU(),
-  #         nn.Linear(256, 128),
-  #         nn.ReLU(),
-  #         nn.Linear(128, args.num_classes),
-  #       )
-
-  # if FREEZE:
-  #   for name, param in model.named_parameters():
-  #     if name == '_blocks.43._bn2.bias':
-  #       break
-  #     if param.requires_grad:
-  #         param.requires_grad = False
 
 elif MODEL == "RESNEXT":
   model = torchvision.models.resnext50_32x4d(pretrained=True)
@@ -440,7 +386,7 @@ else:
 if MODEL == "MIX":
   optimizer = RangerAdaBelief(list(backbone_specialized.parameters()) + list(model_head.parameters()), lr=args.lr, eps=1e-12, betas=(0.9,0.999))
 else:
-  optimizer = optim.Adam(model.parameters(), lr=args.lr) #momentum=args.momentum
+  # optimizer = optim.Adam(model.parameters(), lr=args.lr) #momentum=args.momentum
 
   optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum, weight_decay=args.weight_decay) #momentum=args.momentum
   lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, args.epochs)
@@ -450,48 +396,22 @@ else:
   # lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, args.epochs)
 
 
-def train(epoch):
-    # lr_scheduler.step()
-    model.train()
-    correct = 0
-    for batch_idx, (data, target) in enumerate(train_loader):
-        
-        if target.numpy().any() >= 20 and target.numpy().any() < 0:
-            print(target.numpy())
-            continue
-        if use_cuda:
-            data, target = data.cuda(), target.cuda()
-        optimizer.zero_grad()
-        
-        
-        output = model(data)
-      
-        criterion = torch.nn.CrossEntropyLoss(reduction='mean')
-        loss = criterion(output, target)
-        # loss.requres_grad = True
-
-        loss.backward()
-        optimizer.step()
-
-        # pred = output.data.max(1, keepdim=True)[1]
-        # correct += pred.eq(target.data.view_as(pred)).cpu().sum()
-
-        if batch_idx % args.log_interval == 0:
-            print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
-                epoch, batch_idx * len(data), len(train_loader.dataset),
-                100. * batch_idx / len(train_loader), loss.data.item()))
-
 
 
 
 def validation(val_loader):
-    test_model.eval()
+    model.eval()
+    
+    classifier.eval()
     validation_loss = 0
     correct = 0
     for data, target in val_loader:
         if use_cuda:
             data, target = data.cuda(), target.cuda()
-        output = test_model(data)
+       
+        output = model(data)
+        output = classifier(output)
+      
         # sum up batch loss
         criterion = torch.nn.CrossEntropyLoss(reduction='mean')
         validation_loss += criterion(output, target).data.item()
@@ -508,49 +428,65 @@ def validation(val_loader):
 
 model_name = "/" + args.name
 
-if FIX_MATCH:
-    labeled_iter = iter(train_loader)
-    unlabeled_iter = iter(train_no_label_loader)
-    if args.data_no_label_inat:
-      unlabeled_iter_test = iter(train_loader_no_label_test)
 
-# https://github.com/kekmodel/FixMatch-pytorch/blob/master/train.py
+labeled_iter = iter(train_loader)
+unlabeled_iter = iter(train_no_label_loader)
 
 device = torch.device('cuda')
 
 print("train_loader size = ", len(train_loader))
 print("loader no label size = ", len(train_no_label_loader))
-def interleave(x, size):
-    s = list(x.shape)
-    return x.reshape([-1, size] + s[1:]).transpose(0, 1).reshape([-1] + s[1:])
 
-
-def de_interleave(x, size):
-    s = list(x.shape)
-    return x.reshape([size, -1] + s[1:]).transpose(0, 1).reshape([-1] + s[1:])
 
 args.device = device
 args.resume = False
 
+model._fc = nn.Linear(2048, 256)
 
-if args.use_ema:
-    from ema import ModelEMA
-    ema_model = ModelEMA(args, model, args.ema_decay)
-    if args.resume:
-      checkpoint_ema = torch.load(args.model_ema)
-      ema_model.ema.load_state_dict(checkpoint_ema)
+classifier = nn.Sequential(
+          nn.Linear(256, 128),
+          nn.ReLU(),
+          nn.Linear(128, args.num_classes),
+        )
 
-       
-    test_model = ema_model.ema
+lambda_u_semi = 0.1
 
-else:
-  test_model = model
+class Decoder(nn.Module):
+    def __init__(self):
+        super(Decoder,self).__init__()
+        self.fc1 = nn.Linear(256,512)
+        self.fc2 = nn.Linear(512,32*32*128)
 
-val_loader_crop = torch.utils.data.DataLoader(
-        datasets.ImageFolder(args.data_crop + VALID_IMAGES,
-                            transform=data_transforms_val),
-        batch_size=2, shuffle=False, num_workers=1)
-        
+        self.layer1 = nn.Sequential(
+        nn.ConvTranspose2d(128, 64, kernel_size=5,stride = 2, padding = 2, output_padding=1),
+        nn.ReLU(),
+        nn.BatchNorm2d(64),
+        nn.ConvTranspose2d(64,32,kernel_size = 5, stride = 2, padding = 2, output_padding=1),
+        nn.ReLU(),
+        nn.BatchNorm2d(32))
+
+        self.layer2 = nn.Sequential(
+        nn.ConvTranspose2d(32,16, kernel_size=5,stride = 2, padding = 2, output_padding=1),
+        nn.ReLU(),
+        nn.BatchNorm2d(16),
+        nn.ConvTranspose2d(16,3,kernel_size = 5, stride = 1, padding = 2),
+        nn.ReLU())
+
+        self.upsample =  nn.Upsample(size=(456, 456), mode='bilinear'),
+
+
+
+    def forward(self,x):
+        x = self.fc1(x)
+        x = self.fc2(x)
+        x = x.view(x.size(0), 128, 32, 32)
+        x = self.layer1(x)
+        x = self.layer2(x)
+        x = self.upsample(x)
+
+        return x
+decoder = Decoder()
+
 for epoch in range(1, args.epochs + 1):
   lr_scheduler.step()
   for batch_idx in range(args.eval_step):
@@ -559,75 +495,67 @@ for epoch in range(1, args.epochs + 1):
       except:
           labeled_iter = iter(train_loader)
           inputs_x, targets_x = labeled_iter.next()
-      if args.data_no_label_inat:
-        if np.random.rand() > 0.5:
-          try:
-              (inputs_u_w, inputs_u_s), _ = unlabeled_iter.next()
-          except:
-              unlabeled_iter = iter(train_no_label_loader)
-              (inputs_u_w, inputs_u_s), _ = unlabeled_iter.next()
-        else:
-          try:
-              (inputs_u_w, inputs_u_s), _ = unlabeled_iter_test.next()
-          except:
-              unlabeled_iter_test = iter(train_no_label_loader_test)
-              (inputs_u_w, inputs_u_s), _ = unlabeled_iter_test.next() 
-      else:
-          try:
-              (inputs_u_w, inputs_u_s), _ = unlabeled_iter.next()
-          except:
-              unlabeled_iter = iter(train_no_label_loader)
-              (inputs_u_w, inputs_u_s), _ = unlabeled_iter.next()
 
+      try:
+          inputs_u, _ = unlabeled_iter.next()
+      except:
+          unlabeled_iter = iter(train_no_label_loader)
+          inputs_u, _ = unlabeled_iter.next()
 
       optimizer.zero_grad()
       batch_size = inputs_x.shape[0]
       # inputs = interleave(
       #     torch.cat((inputs_x, inputs_u_w, inputs_u_s)), 2*args.batch_size_u+1).to(device)
 
-      inputs = torch.cat((inputs_x, inputs_u_w, inputs_u_s)).to(device)
-      targets_x = targets_x.to(device)
-      logits = model(inputs)
-      # logits = de_interleave(logits, 2*args.batch_size_u+1)
-      logits_x = logits[:batch_size]
-      logits_u_w, logits_u_s = logits[batch_size:].chunk(2)
+      ### rotate 
+      
     
+      inputs = torch.cat((inputs_x, inputs_u)).to(device)
+      targets_x = targets_x.to(device)
+    
+      features = model(inputs)
+      logits = classifier(features)
+      pred_decoder = decoder(features)
+    
+
+      # logits = de_interleave(logits, 2*args.batch_size_u+1)
+     
+    
+      logits_x = logits[:batch_size]
+      try:
+        logits_u, _ = logits[batch_size:].chunk(2)
+      except ValueError:
+        logits_u = logits[batch_size:].chunk(1)[0]
+
       del logits
 
       Lx = F.cross_entropy(logits_x, targets_x, reduction='mean')
 
-      pseudo_label = torch.softmax(logits_u_w.detach_()/args.T, dim=-1)
-      max_probs, targets_u = torch.max(pseudo_label, dim=-1)
-      mask = max_probs.ge(args.threshold).float()
-      Lu = (F.cross_entropy(logits_u_s, targets_u,
-                            reduction='none') * mask).mean()
 
-      loss = Lx + args.lambda_u * Lu
+      Lu_semi = (loss_rot(pred_decoder, inputs,
+                          reduction='none')).mean()
 
- 
+      loss = Lx + lambda_u_semi * Lu_semi 
+
+    
       loss.backward()
 
       optimizer.step()
-      if args.use_ema:
-        ema_model.update(model)
+     
 
       model.zero_grad()
       if batch_idx % args.log_interval == 0:
         print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f} \tLoss_x: {:.6f} \tLoss_u: {:.6f} '.format(
             epoch, batch_idx , args.eval_step,
-            100. * batch_idx / len(train_loader), loss.data.item(), Lx.data.item(), Lu.data.item()))
+            100. * batch_idx / len(train_loader), loss.data.item(), Lx.data.item(), Lu_semi.data.item()))
 
   validation(val_loader)
-  validation(val_loader_crop)
   if not args.test:
     model_file = args.experiment + model_name +  '_model_' + str(epoch) + '.pth'
     torch.save(model.state_dict(), model_file)
-    if args.use_ema:
-      model_file_ema = args.experiment + model_name +  'ema_model_' + str(epoch) + '.pth'
-      ema_to_save = ema_model.ema.module if hasattr(ema_model.ema, "module") else ema_model.ema
-      torch.save(ema_to_save.state_dict(), model_file_ema)
-      print('Saved model to ' + model_file_ema + '. You can run `python evaluate.py --model ' + model_file_ema + '` to generate the Kaggle formatted csv file\n')
-
-    print('Saved model to ' + model_file + '. You can run `python evaluate.py --model ' + model_file + '` to generate the Kaggle formatted csv file\n')
+   
+    model_file_classifier = args.experiment + model_name +  'class_model_' + str(epoch) + '.pth'
+    torch.save(classifier.state_dict(), model_file_classifier)
+    print('Saved model to ' + model_file_classifier + '. You can run `python evaluate.py --model ' + model_file + '` to generate the Kaggle formatted csv file\n')
 
 

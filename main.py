@@ -106,7 +106,7 @@ VALID_IMAGES = '/val_images' #
 VALID = True
 PRETRAIN = False
 CHANNELS = "SINGLE" # "TRIPLE"
-NEW_EVAL = False
+NEW_EVAL = True
 BALANCE_CLASSES = True
 
 if args.online_da:
@@ -114,8 +114,8 @@ if args.online_da:
 else:
   train_transform = data_transforms_train
   
-def train_val_dataset(dataset, val_split=0.055):
-    train_idx, val_idx = train_test_split(list(range(len(dataset))), test_size=val_split)
+def train_val_dataset(dataset, val_split=0.056):
+    train_idx, val_idx = train_test_split(list(range(len(dataset))), test_size=val_split, random_state=11)
     datasets = {}
     dataset_train = torch.utils.data.Subset(dataset, train_idx)
     dataset_val = torch.utils.data.Subset(dataset, val_idx)
@@ -202,6 +202,8 @@ else:
                           transform=data_transforms_val)
   else:
     data_inat = None
+
+
 
 if CHANNELS != "DOUBLE" and CHANNELS != "TRIPLE":
 

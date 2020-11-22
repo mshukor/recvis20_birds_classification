@@ -21,12 +21,12 @@ args = parser.parse_args()
 
 
 DATA = args.data
-VALID_IMAGES = '/val_images' #
+VALID_IMAGES = '/Inat_mini2' # val_images
 TRAIN_IMAGES = '/train_images' # '/train_images' '/images
 
 model_path = args.model
-model_path0 = 'experiment/pseud_2_resnet_model_4.pth'
-model_path1 = 'experiment/pseud_2_inception_model_5.pth'
+model_path0 = 'experiment/pseud_3_inat_model_9.pth'
+model_path1 = 'eff_pseudo_2_sgd_model_4.pth'
 use_cuda = True
 
 
@@ -59,19 +59,21 @@ val_loader = torch.utils.data.DataLoader(
 
 # model = inception_v3(pretrained=False)
 model = EfficientNet.from_pretrained('efficientnet-b6', num_classes=20)
+model0 = EfficientNet.from_pretrained('efficientnet-b6', num_classes=20)
+model1 = EfficientNet.from_pretrained('efficientnet-b6', num_classes=20)
 
 # model = torch.hub.load('pytorch/vision:v0.6.0', 'resnet18', pretrained=True)  
 # model.fc = nn.Linear(512, 20, bias = True)
 
-model0 = torch.hub.load('pytorch/vision:v0.6.0', 'resnet101', pretrained=True)  
-model0.fc = nn.Linear(2048, 20, bias = True)
+# model0 = torch.hub.load('pytorch/vision:v0.6.0', 'resnet101', pretrained=True)  
+# model0.fc = nn.Linear(2048, 20, bias = True)
 
 # model1 = torch.hub.load('pytorch/vision:v0.6.0', 'resnet18', pretrained=True)  
 # model1.fc = nn.Linear(512, 10, bias = True)
 
-model1 = models.inception_v3(pretrained=True)
+# model1 = models.inception_v3(pretrained=True)
 # model = inception_v3(pretrained=False)
-model1.fc = nn.Linear(2048, 20)
+# model1.fc = nn.Linear(2048, 20)
 
 if use_cuda:
   checkpoint = torch.load(model_path)

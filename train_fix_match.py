@@ -82,7 +82,7 @@ parser.add_argument('--model-ema', type=str, default=None, metavar='D',
 
 parser.add_argument('--eval-step', default=1024, type=int,
                     help='number of eval steps to run')
-parser.add_argument('--use-ema', action='store_true', default=True,
+parser.add_argument('--use-ema', action='store_true', default=False,
                     help='use EMA model')
 parser.add_argument('--ema-decay', default=0.999, type=float,
                     help='EMA decay rate')
@@ -255,7 +255,8 @@ if CHANNELS != "DOUBLE" and CHANNELS != "TRIPLE":
     train_data = data_orig
 
   if args.data_no_label_inat and args.data_no_label_nabirds and args.data_no_label_crop:
-    data_no_label = ConcatDataset(data_no_label, data_no_label_crop, data_no_label_inat, data_no_label_nabirds)
+    data_no_label = ConcatDataset(data_no_label_inat, data_no_label_nabirds)
+    data_no_label_test = ConcatDataset(data_no_label, data_no_label_crop)
   elif args.data_no_label_crop and args.data_no_label_attention:
     data_no_label = ConcatDataset(data_no_label, data_no_label_crop, data_no_label_attention)
 
@@ -291,7 +292,9 @@ else:
     train_no_label_loader = torch.utils.data.DataLoader(
         data_no_label,
         batch_size=args.batch_size_u, num_workers=1, sampler=sampler, shuffle=shuffle) #sampler=sampler
-
+    train_loader_no_label_test = torch.utils.data.DataLoader(
+        data_no_label_test,
+        batch_size=args.batch_size_u, num_workers=1, shuffle=True) 
   if VALID:
     val_loader = torch.utils.data.DataLoader(
         data_orig_val,
@@ -488,6 +491,8 @@ model_name = "/" + args.name
 if FIX_MATCH:
     labeled_iter = iter(train_loader)
     unlabeled_iter = iter(train_no_label_loader)
+    if args.data_no_label_inat:
+      unlabeled_iter_test = iter(train_loader_no_label_test)
 
 # https://github.com/kekmodel/FixMatch-pytorch/blob/master/train.py
 
@@ -521,6 +526,11 @@ if args.use_ema:
 else:
   test_model = model
 
+val_loader_crop = torch.utils.data.DataLoader(
+        datasets.ImageFolder(args.data_crop + VALID_IMAGES,
+                            transform=data_transforms_val),
+        batch_size=2, shuffle=False, num_workers=1)
+        
 for epoch in range(1, args.epochs + 1):
   lr_scheduler.step()
   for batch_idx in range(args.eval_step):
@@ -529,12 +539,26 @@ for epoch in range(1, args.epochs + 1):
       except:
           labeled_iter = iter(train_loader)
           inputs_x, targets_x = labeled_iter.next()
+      if args.data_no_label_inat:
+        if np.random.rand() > 0.5:
+          try:
+              (inputs_u_w, inputs_u_s), _ = unlabeled_iter.next()
+          except:
+              unlabeled_iter = iter(train_no_label_loader)
+              (inputs_u_w, inputs_u_s), _ = unlabeled_iter.next()
+        else:
+          try:
+              (inputs_u_w, inputs_u_s), _ = unlabeled_iter_test.next()
+          except:
+              unlabeled_iter_test = iter(train_no_label_loader_test)
+              (inputs_u_w, inputs_u_s), _ = unlabeled_iter_test.next() 
+      else:
+          try:
+              (inputs_u_w, inputs_u_s), _ = unlabeled_iter.next()
+          except:
+              unlabeled_iter = iter(train_no_label_loader)
+              (inputs_u_w, inputs_u_s), _ = unlabeled_iter.next()
 
-      try:
-          (inputs_u_w, inputs_u_s), _ = unlabeled_iter.next()
-      except:
-          unlabeled_iter = iter(train_no_label_loader)
-          (inputs_u_w, inputs_u_s), _ = unlabeled_iter.next()
 
       optimizer.zero_grad()
       batch_size = inputs_x.shape[0]
@@ -574,6 +598,7 @@ for epoch in range(1, args.epochs + 1):
             100. * batch_idx / len(train_loader), loss.data.item(), Lx.data.item(), Lu.data.item()))
 
   validation(val_loader)
+  validation(val_loader_crop)
   if not args.test:
     model_file = args.experiment + model_name +  '_model_' + str(epoch) + '.pth'
     torch.save(model.state_dict(), model_file)

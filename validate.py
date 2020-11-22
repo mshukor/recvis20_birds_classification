@@ -6,7 +6,7 @@ from inception import *
 import torch.nn as nn
 import argparse
 from data import ConcatDataset
-
+from tqdm import tqdm
 from torch.utils.data import Subset
 from sklearn.model_selection import train_test_split
 
@@ -20,7 +20,7 @@ args = parser.parse_args()
 
 
 DATA = args.data
-VALID_IMAGES = '/val_images' #
+VALID_IMAGES = '/Inat_mini2' #Inat_mini2 val_images
 TRAIN_IMAGES = '/train_images' # '/train_images' '/images
 
 model_path = args.model
@@ -53,7 +53,7 @@ val_loader = torch.utils.data.DataLoader(
     data_val,
     batch_size=2, shuffle=False, num_workers=1)
 
-
+print(data_val.classes)
 # model = inception_v3(pretrained=False)
 model = EfficientNet.from_pretrained('efficientnet-b6', num_classes=20)
 if use_cuda:
@@ -72,7 +72,7 @@ def validation():
     model.eval()
     validation_loss = 0
     correct = 0
-    for indata, target in val_loader:
+    for indata, target in tqdm(val_loader):
         if use_cuda:
             indata, target = indata.cuda(), target.cuda()
         output = model(indata)
@@ -82,7 +82,6 @@ def validation():
         # get the index of the max log-probability
         pred = output.data.max(1, keepdim=True)[1]
         correct += pred.eq(target.data.view_as(pred)).cpu().sum()
-
     validation_loss /= len(val_loader.dataset)
     print('\nValidation set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)'.format(
         validation_loss, correct, len(val_loader.dataset),

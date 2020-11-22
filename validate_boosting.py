@@ -18,7 +18,7 @@ from detectron2.utils.visualizer import Visualizer
 from detectron2.data import MetadataCatalog
 import numpy as np
 
-MULTI_SCALE = True
+MULTI_SCALE = False
 if MULTI_SCALE:
   # Define a Mask-R-CNN model in Detectron2
   cfg = get_cfg()
@@ -50,6 +50,9 @@ parser.add_argument('--model1', type=str, metavar='M', default=None,
 
 args = parser.parse_args()
 use_cuda = torch.cuda.is_available()
+
+
+
 
 if use_cuda:
   state_dict = torch.load(args.model)
@@ -160,8 +163,10 @@ for d in tqdm(os.listdir(test_dir)):
           # data_crop = data_crop.view(1, data.size(0), data.size(1), data.size(2))
           except FileNotFoundError:
             data_crop = data
-
-          data_attention = data_transforms(pil_loader(os.path.join(test_dir_attention, d) + '/' + f))
+          try:
+            data_attention = data_transforms(pil_loader(os.path.join(test_dir_attention, d) + '/' + f))
+          except FileNotFoundError:
+            data_attention = data
           # data_attention = data_attention.view(1, data.size(0), data.size(1), data.size(2))
 
           # sample = torch.cat((data_mask, data_mask, data_attention), dim=0)

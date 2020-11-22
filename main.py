@@ -58,6 +58,8 @@ parser.add_argument('--data-pseudo-2', type=str, default=None, metavar='D',
                     help="folder where data is located. train_images/ and val_images/ need to be found in the folder")
 parser.add_argument('--data-nabirds', type=str, default=None, metavar='D',
                     help="folder where data is located. train_images/ and val_images/ need to be found in the folder")
+parser.add_argument('--data-inat', type=str, default=None, metavar='D',
+                    help="folder where data is located. train_images/ and val_images/ need to be found in the folder")
 
 parser.add_argument('--model', type=str, default=None, metavar='D',
                     help="folder where data is located. train_images/ and val_images/ need to be found in the folder")
@@ -83,7 +85,8 @@ parser.add_argument('--num_classes', type=int, default=20, metavar='N',
 parser.add_argument('--online_da', type=bool, default=True, metavar='N',
                     help='online data augmentaiion')
 parser.add_argument('--weight-decay', default=2e-4, type=float, help='weight decay')
-
+parser.add_argument('--use-ema', action='store_true', default=False,
+                    help='use EMA model')
 args = parser.parse_args()
 use_cuda = torch.cuda.is_available()
 torch.manual_seed(args.seed)
@@ -194,7 +197,11 @@ else:
   else:
     data_nabirds = None
 
-
+  if args.data_inat:
+    data_inat = datasets.ImageFolder(args.data_inat + TRAIN_IMAGES,
+                          transform=data_transforms_val)
+  else:
+    data_inat = None
 
 if CHANNELS != "DOUBLE" and CHANNELS != "TRIPLE":
 
@@ -208,13 +215,13 @@ if CHANNELS != "DOUBLE" and CHANNELS != "TRIPLE":
     targets +=  data_pseudo.targets
     targets +=  data_nabirds.targets
 
-  elif args.data_nabirds and args.data_crop  and args.data_pseudo :
-    train_data = ConcatDataset(data_orig, data_crop, data_pseudo, data_nabirds)
+  elif args.data_inat and args.data_crop  and args.data_pseudo :
+    train_data = ConcatDataset(data_orig, data_crop, data_pseudo, data_inat)
    
     targets += data_crop.targets
     # targets +=  data_attention.targets
     targets +=  data_pseudo.targets
-    targets +=  data_nabirds.targets
+    targets +=  data_inat.targets
 
   elif args.data_crop and args.data_mask:
     train_data = ConcatDataset(data_orig, data_crop, data_mask)
@@ -300,7 +307,7 @@ elif MODEL == "EFFICIENT":
     model._fc = nn.Linear(2048, args.num_classes)
   else:
     # model = EFFICIENT(args.num_classes)
-    model = EfficientNet.from_pretrained('efficientnet-b4', num_classes=args.num_classes)
+    model = EfficientNet.from_pretrained('efficientnet-b6', num_classes=args.num_classes)
     if args.model:
         print("loading pretrained model")
         checkpoint = torch.load(args.model)

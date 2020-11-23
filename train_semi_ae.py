@@ -8,7 +8,6 @@ from torch.autograd import Variable
 from tqdm import tqdm
 from adabelief_pytorch import AdaBelief
 from ranger_adabelief import RangerAdaBelief
-from inception import *
 from data import ConcatDataset
 import pretrainedmodels
 from sklearn.model_selection import train_test_split
@@ -16,7 +15,6 @@ import numpy as np
 import timm
 import torchvision.transforms as transforms
 import bit_torch_models as bit_models
-# from models import EFFICIENT
 import torch.nn.functional as F
 import torchvision
 from data import DoubleChannels, TripleChannels
@@ -120,7 +118,7 @@ TEST_IMAGES = '/test_images'
 VALID = True
 PRETRAIN = False
 CHANNELS = "SINGLE" # "TRIPLE" DOUBLE SINGLE
-NEW_EVAL = True
+NEW_EVAL = False
 BALANCE_CLASSES = False
 FIX_MATCH = True
 SEMI_SELF = True
@@ -441,7 +439,7 @@ print("loader no label size = ", len(train_no_label_loader))
 args.device = device
 args.resume = False
 
-model._fc = nn.Linear(2048, 256)
+model._fc = nn.Linear(2304, 256)
 
 classifier = nn.Sequential(
           nn.Linear(256, 128),
@@ -472,7 +470,7 @@ class Decoder(nn.Module):
         nn.ConvTranspose2d(16,3,kernel_size = 5, stride = 1, padding = 2),
         nn.ReLU())
 
-        self.upsample =  nn.Upsample(size=(456, 456), mode='bilinear'),
+        self.upsample =  nn.Upsample(size=(456, 456), mode='bilinear')
 
 
 
@@ -486,7 +484,9 @@ class Decoder(nn.Module):
 
         return x
 decoder = Decoder()
-
+decoder.cuda()
+model.cuda()
+classifier.cuda()
 for epoch in range(1, args.epochs + 1):
   lr_scheduler.step()
   for batch_idx in range(args.eval_step):
@@ -518,7 +518,6 @@ for epoch in range(1, args.epochs + 1):
       pred_decoder = decoder(features)
     
 
-      # logits = de_interleave(logits, 2*args.batch_size_u+1)
      
     
       logits_x = logits[:batch_size]
@@ -532,7 +531,7 @@ for epoch in range(1, args.epochs + 1):
       Lx = F.cross_entropy(logits_x, targets_x, reduction='mean')
 
 
-      Lu_semi = (loss_rot(pred_decoder, inputs,
+      Lu_semi = (F.mse_loss(pred_decoder, inputs,
                           reduction='none')).mean()
 
       loss = Lx + lambda_u_semi * Lu_semi 

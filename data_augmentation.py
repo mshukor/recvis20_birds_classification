@@ -8,18 +8,16 @@ from PIL import Image
 from tqdm import tqdm
 
 
-parser = argparse.ArgumentParser(description='RecVis A3 training script')
+parser = argparse.ArgumentParser(description='RecVis A3 data augmentation script')
 parser.add_argument('--dirname', type=str, default='bird_dataset/train_images', metavar='D',
-                    help="folder where data is located. train_images/ and val_images/ need to be found in the folder")
+                    help="folder where data is located")
 
 args = parser.parse_args()
 
 def normalize8(I):
   mn = I.min()
   mx = I.max()
-
   mx -= mn
-
   I = ((I - mn)/mx) * 255
   return I.astype(np.uint8)
 

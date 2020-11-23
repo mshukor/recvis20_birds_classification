@@ -23,47 +23,28 @@ from data import DoubleChannels, TripleChannels
 from efficientnet_pytorch import EfficientNet
 from efficientnet_pytorch.utils import Conv2dStaticSamePadding
 import torchvision.models as models 
-# class EFFICIENT(nn.Module):
-#     def __init__(self, num_classes):
-#         super(EFFICIENT, self).__init__()
-#         self.model = EfficientNet.from_pretrained('efficientnet-b6', num_classes=512)
-#         self.fc1 = nn.Linear(512, 256)
-#         self.fc2 = nn.Linear(256, 128)
-#         self.classifier = nn.Linear(128, num_classes)
-#         self.relu = nn.ReLU()
-#         self.dropout = nn.Dropout(0.5)
-#     def forward(self, x):
-#         out = self.model(x)
-#         # out = out.view(x.size(0), -1)
-#         out = self.relu (self.fc1(out))
-#         out = self.dropout(out)
-#         out = self.relu (self.fc2(out))
-#         out = self.dropout(out)
-#         out = self.classifier(out)
-#         return out
+
 
 # Training settings
 parser = argparse.ArgumentParser(description='RecVis A3 training script')
 parser.add_argument('--data', type=str, default='bird_dataset', metavar='D',
                     help="folder where data is located. train_images/ and val_images/ need to be found in the folder")
 parser.add_argument('--data-crop', type=str, default=None, metavar='D',
-                    help="folder where data is located. train_images/ and val_images/ need to be found in the folder")
+                    help="folder where cropped data is located. train_images/ and val_images/ need to be found in the folder")
 parser.add_argument('--data-mask', type=str, default=None, metavar='D',
-                    help="folder where data is located. train_images/ and val_images/ need to be found in the folder")
+                    help="folder where data of masks is located. train_images/ and val_images/ need to be found in the folder")
 parser.add_argument('--data-pseudo', type=str, default=None, metavar='D',
-                    help="folder where data is located. train_images/ and val_images/ need to be found in the folder")
+                    help="folder where data with pseudo labels is located")
 parser.add_argument('--data-attention', type=str, default=None, metavar='D',
-                    help="folder where data is located. train_images/ and val_images/ need to be found in the folder")
+                    help="folder where data with attention masks applied to images is located")
 parser.add_argument('--data-pseudo-2', type=str, default=None, metavar='D',
-                    help="folder where data is located. train_images/ and val_images/ need to be found in the folder")
+                    help="folder where data with pseudo labels in the second stage is located")
 parser.add_argument('--data-nabirds', type=str, default=None, metavar='D',
-                    help="folder where data is located. train_images/ and val_images/ need to be found in the folder")
+                    help="folder where nabirds dataset is located")
 parser.add_argument('--data-inat', type=str, default=None, metavar='D',
-                    help="folder where data is located. train_images/ and val_images/ need to be found in the folder")
-
+                    help="folder where Inaturalist dataset is located.")
 parser.add_argument('--model', type=str, default=None, metavar='D',
-                    help="folder where data is located. train_images/ and val_images/ need to be found in the folder")
-
+                    help="path to the model to be loaded")
 parser.add_argument('--batch-size', type=int, default=64, metavar='B',
                     help='input batch size for training (default: 64)')
 parser.add_argument('--epochs', type=int, default=10, metavar='N',
@@ -207,8 +188,6 @@ else:
 
 if CHANNELS != "DOUBLE" and CHANNELS != "TRIPLE":
 
-
-
   if args.data_nabirds and args.data_crop  and args.data_pseudo and args.data_pseudo_2:
     train_data = ConcatDataset(data_orig, data_crop, data_pseudo, data_pseudo_2, data_nabirds)
    
@@ -259,8 +238,7 @@ if BALANCE_CLASSES:
 else:
   sampler = None
   shuffle = True
-# classes_to_names = {v: k for k, v in data_old_train.class_to_idx.items()}
-# print(classes_to_names)
+
 if CHANNELS == "DOUBLE" or CHANNELS == "TRIPLE":
   train_loader = torch.utils.data.DataLoader(
       data_combined,
@@ -283,10 +261,6 @@ else:
                             transform=data_transforms_val),
         batch_size=2, shuffle=False, num_workers=1)
 
-# Neural network and optimizer
-# We define neural net in model.py so that it can be reused by the evaluate.py script
-
-
 if MODEL == "MIX":
     backbone_generalized = EfficientNet.from_pretrained('efficientnet-b6', num_classes=555)
     backbone_specialized = EfficientNet.from_pretrained('efficientnet-b6', num_classes=555)
@@ -308,7 +282,6 @@ elif MODEL == "EFFICIENT":
     model.load_state_dict(checkpoint) 
     model._fc = nn.Linear(2048, args.num_classes)
   else:
-    # model = EFFICIENT(args.num_classes)
     model = EfficientNet.from_pretrained('efficientnet-b6', num_classes=args.num_classes)
     if args.model:
         print("loading pretrained model")
@@ -319,22 +292,6 @@ elif MODEL == "EFFICIENT":
       model._conv_stem = Conv2dStaticSamePadding(in_channels=3*2, out_channels=56, kernel_size=(3, 3), stride=2, image_size=(456, 456))
     if CHANNELS == "TRIPLE":
       model._conv_stem = Conv2dStaticSamePadding(in_channels=3*3, out_channels=56, kernel_size=(3, 3), stride=2, image_size=(456, 456))
-
-
-  #   model._fc = nn.Sequential(
-  #         nn.Linear(2304, 256),
-  #         nn.ReLU(),
-  #         nn.Linear(256, 128),
-  #         nn.ReLU(),
-  #         nn.Linear(128, args.num_classes),
-  #       )
-
-  # if FREEZE:
-  #   for name, param in model.named_parameters():
-  #     if name == '_blocks.43._bn2.bias':
-  #       break
-  #     if param.requires_grad:
-  #         param.requires_grad = False
 
 elif MODEL == "RESNEXT":
   model = torchvision.models.resnext50_32x4d(pretrained=True)
@@ -348,19 +305,9 @@ elif MODEL == "RESNEXT":
 
 elif MODEL == "INCEPTION":
   model = models.inception_v3(pretrained=True)
-  # model = inception_v3(pretrained=False)
-
   model.fc = nn.Linear(2048, args.num_classes)
-  # print("loading pretrained model")
-  # checkpoint = torch.load("iNat_2018_InceptionV3.pth.tar")
-  # model.load_state_dict(checkpoint['state_dict']) 
-  # model.fc = nn.Linear(2048, args.num_classes)
   model.aux_logits = False
-  # if FREEZE:
-  #   for name, param in model.named_parameters():
-  #       if param.requires_grad:
-  #           if name.split(".")[0] not in ["Mixed_6e", "AuxLogits", "Mixed_7a", "Mixed_7b", "Mixed_7c", "fc"]:
-  #             param.requires_grad = False
+ 
 elif MODEL == "INCEPTIONRESNETV2":
   model_name = 'inceptionresnetv2' # could be fbresnet152 or inceptionresnetv2
   model = pretrainedmodels.__dict__[model_name](num_classes=1000, pretrained='imagenet')
@@ -382,8 +329,6 @@ if args.model and CHANNELS != 'TRIPLE' and CHANNELS != 'DOUBLE':
     checkpoint = torch.load(args.model)
     model.load_state_dict(checkpoint) 
  
-from model import Net
-# model = Net()
 if use_cuda:
     print('Using GPU')
     if MODEL == "MIX":
@@ -398,15 +343,12 @@ else:
 if MODEL == "MIX":
   optimizer = RangerAdaBelief(list(backbone_specialized.parameters()) + list(model_head.parameters()), lr=args.lr, eps=1e-12, betas=(0.9,0.999))
 else:
-  optimizer = optim.Adam(model.parameters(), lr=args.lr) #momentum=args.momentum
-
+  # optimizer = optim.Adam(model.parameters(), lr=args.lr) #momentum=args.momentum
   optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum, weight_decay = args.weight_decay) #momentum=args.momentum
   lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, args.epochs)
-
   # optimizer = AdaBelief(model.parameters(), lr=args.lr, eps=1e-16, betas=(0.9,0.999), weight_decouple = True, rectify = False)
   # optimizer = RangerAdaBelief(model.parameters(), lr=args.lr, eps=1e-12, betas=(0.9,0.999))
   # lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, args.epochs)
-
 
 def train(epoch):
     lr_scheduler.step()

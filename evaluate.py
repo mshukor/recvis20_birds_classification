@@ -4,7 +4,7 @@ import os
 import PIL.Image as Image
 
 import torch
-from inception import *
+# from inception import *
 
 from model import Net
 import torch.nn as nn

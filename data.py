@@ -143,8 +143,6 @@ class TripleChannels(torch.utils.data.Dataset):
 
         return sample, target_image
 
-    
-
 
 class TransformFixMatch(object):
     def __init__(self, ):

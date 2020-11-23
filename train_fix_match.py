@@ -16,7 +16,6 @@ import numpy as np
 import timm
 import torchvision.transforms as transforms
 import bit_torch_models as bit_models
-# from models import EFFICIENT
 import torch.nn.functional as F
 import torchvision
 from data import DoubleChannels, TripleChannels
@@ -135,7 +134,7 @@ else:
   train_transform = data_transforms_train
   
 def train_val_dataset(dataset, val_split=0.055):
-    train_idx, val_idx = train_test_split(list(range(len(dataset))), test_size=val_split)
+    train_idx, val_idx = train_test_split(list(range(len(dataset))), test_size=val_split, random_state=11)
     datasets = {}
     dataset_train = torch.utils.data.Subset(dataset, train_idx)
     dataset_val = torch.utils.data.Subset(dataset, val_idx)

@@ -86,8 +86,8 @@ VALID_IMAGES = '/val_images' #
 VALID = True
 PRETRAIN = False
 CHANNELS = "SINGLE" # "TRIPLE"
-NEW_EVAL = True
-BALANCE_CLASSES = True
+NEW_EVAL = False
+BALANCE_CLASSES = False
 
 if args.online_da:
   train_transform = data_transforms_val
@@ -131,7 +131,7 @@ if NEW_EVAL:
 else:
   data_orig = datasets.ImageFolder(args.data + TRAIN_IMAGES,
                             transform=data_transforms_train)
-  data_orig_val = datasets.ImageFolder(args.data + VALID_IMAGES,
+  data_orig_val = datasets.ImageFolder('bird_dataset' + VALID_IMAGES,
                             transform=data_transforms_val)
   targets = data_orig.targets
 if CHANNELS == "DOUBLE":
@@ -195,13 +195,13 @@ if CHANNELS != "DOUBLE" and CHANNELS != "TRIPLE":
     targets +=  data_pseudo.targets
     targets +=  data_nabirds.targets
 
-  elif args.data_inat and args.data_crop  and args.data_pseudo and args.data_attention:
-    train_data = ConcatDataset(data_orig, data_crop, data_pseudo, data_inat, data_attention)
+  elif args.data_crop  and args.data_pseudo and args.data_attention:
+    train_data = ConcatDataset(data_orig, data_crop, data_pseudo, data_attention)
    
     targets += data_crop.targets
     # targets +=  data_attention.targets
     targets +=  data_pseudo.targets
-    targets +=  data_inat.targets
+    # targets +=  data_inat.targets
 
   elif args.data_crop and args.data_mask:
     train_data = ConcatDataset(data_orig, data_crop, data_mask)
@@ -350,11 +350,11 @@ else:
   optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum, weight_decay = args.weight_decay) #momentum=args.momentum
   lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, args.epochs)
   # optimizer = AdaBelief(model.parameters(), lr=args.lr, eps=1e-16, betas=(0.9,0.999), weight_decouple = True, rectify = False)
-  optimizer = RangerAdaBelief(model.parameters(), lr=args.lr, eps=1e-12, betas=(0.9,0.999))
+  # optimizer = RangerAdaBelief(model.parameters(), lr=args.lr, eps=1e-12, betas=(0.9,0.999))
   # lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, args.epochs)
 
 def train(epoch):
-    # lr_scheduler.step()
+    lr_scheduler.step()
     model.train()
     correct = 0
     for batch_idx, (data, target) in enumerate(train_loader):

@@ -4,7 +4,6 @@ import os
 import PIL.Image as Image
 
 import torch
-from inception import *
 from torchvision import datasets
 
 from model import Net
@@ -69,11 +68,11 @@ test_dir_attention = args.data_attention + '/test_images/mistery_category'
 test_dir_mask = args.data_mask + '/test_images/mistery_category'
 
 model1 = EfficientNet.from_pretrained('efficientnet-b6', num_classes=20)
-
-state_dict1 = torch.load(args.model2)
-model1.load_state_dict(state_dict1)
-model1.eval()
-model1.cuda()
+if args.model2:
+  state_dict1 = torch.load(args.model2)
+  model1.load_state_dict(state_dict1)
+  model1.eval()
+  model1.cuda()
 
 def pil_loader(path):
     # open path as file to avoid ResourceWarning (https://github.com/python-pillow/Pillow/issues/835)
@@ -119,6 +118,7 @@ for f in tqdm(os.listdir(test_dir)):
       # data_crop = data_crop.view(1, data.size(0), data.size(1), data.size(2))
       except FileNotFoundError:
         data_crop = data
+        print("not found")
 
       data_attention = data_transforms(pil_loader(test_dir_attention + '/' + f))
       # data_attention = data_attention.view(1, data.size(0), data.size(1), data.size(2))
@@ -157,7 +157,9 @@ for f in tqdm(os.listdir(test_dir)):
       # pred_ensemble = output_ensemble.data.max(1, keepdim=False)[1]
      
 
-      output_file.write("%s,%d\n" % (f[:-4], pred_ensemble))
+      # output_file.write("%s,%d\n" % (f[:-4], pred_ensemble))
+      output_file.write("%s,%d\n" % (f[:-4], pred))
+
 output_file.close()
 
 

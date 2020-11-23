@@ -42,8 +42,14 @@ parser.add_argument('--data-no-label-crop', type=str, default=None, metavar='D',
                     help="folder where data is located. train_images/ and val_images/ need to be found in the folder")
 parser.add_argument('--data-no-label-attention', type=str, default=None, metavar='D',
                     help="folder where data is located. train_images/ and val_images/ need to be found in the folder")
-
-
+parser.add_argument('--data-no-label-nabirds', type=str, default=None, metavar='D',
+                    help="folder where data is located. train_images/ and val_images/ need to be found in the folder")
+parser.add_argument('--data-no-label-inat', type=str, default=None, metavar='D',
+                    help="folder where data is located. train_images/ and val_images/ need to be found in the folder")
+parser.add_argument('--data-no-label-inat-crop', type=str, default=None, metavar='D',
+                    help="folder where data is located. train_images/ and val_images/ need to be found in the folder")
+parser.add_argument('--data-no-label-nabirds-crop', type=str, default=None, metavar='D',
+                    help="folder where data is located. train_images/ and val_images/ need to be found in the folder")
 parser.add_argument('--self', action='store_true', default=False, help='self supervised')
 
 parser.add_argument('--model', type=str, default=None, metavar='D',
@@ -67,7 +73,7 @@ parser.add_argument('--name', type=str, default='efficient', metavar='E',
                     help='folder where experiment outputs are located.')
 parser.add_argument('--num_classes', type=int, default=20, metavar='N',
                     help='number of epochs to train (default: 10)')
-parser.add_argument('--online_da', type=bool, default=True, metavar='N',
+parser.add_argument('--online-da', type=bool, default=True, metavar='N',
                     help='online data augmentaiion')
 # parser.add_argument('--merged', type=bool, default=False, metavar='N',
 #                     help='use several datasets')
@@ -217,6 +223,29 @@ else:
   else:
     data_no_label_attention = None
 
+  if args.data_no_label_nabirds:
+    data_no_label_nabirds = datasets.ImageFolder(args.data_no_label_nabirds + '/images',
+                          transform=data_transforms_val)
+  else:
+    data_no_label_nabirds = None
+
+  if args.data_no_label_inat:
+    data_no_label_inat = datasets.ImageFolder(args.data_no_label_inat + '/Inat_mini2',
+                          transform=data_transforms_val)
+  else:
+    data_no_label_inat = None
+
+  if args.data_no_label_inat_crop:
+    data_no_label_inat_crop = datasets.ImageFolder(args.data_no_label_inat_crop + '/Inat_mini2',
+                          transform=data_transforms_val)
+  else:
+    data_no_label_inat_crop = None
+
+  if args.data_no_label_nabirds_crop:
+    data_no_label_nabirds_crop = datasets.ImageFolder(args.data_no_label_nabirds_crop + '/images',
+                          transform=data_transforms_val)
+  else:
+    data_no_label_nabirds_crop = None
 
 if CHANNELS != "DOUBLE" and CHANNELS != "TRIPLE":
   if args.data_crop and args.data_mask:
@@ -238,8 +267,16 @@ if CHANNELS != "DOUBLE" and CHANNELS != "TRIPLE":
   else:
     train_data = data_orig
 
-  if args.data_no_label_crop and args.data_no_label_attention:
+  if args.data_no_label_inat and args.data_no_label_crop and args.data_no_label_inat_crop :
+    data_no_label = ConcatDataset(data_no_label_inat, data_no_label_inat_crop)
+    data_no_label_test = ConcatDataset(data_no_label, data_no_label_crop)
+
+  elif args.data_no_label_inat and args.data_no_label_nabirds and args.data_no_label_crop:
+    data_no_label = ConcatDataset(data_no_label_inat, data_no_label_nabirds)
+    data_no_label_test = ConcatDataset(data_no_label, data_no_label_crop)
+  elif args.data_no_label_crop and args.data_no_label_attention:
     data_no_label = ConcatDataset(data_no_label, data_no_label_crop, data_no_label_attention)
+
 
 if BALANCE_CLASSES:
   class_sample_count = torch.unique(torch.from_numpy(np.array(targets)), return_counts=True)[1]
@@ -268,11 +305,14 @@ if CHANNELS == "DOUBLE" or CHANNELS == "TRIPLE":
 else:
   train_loader = torch.utils.data.DataLoader(
       train_data,
-      batch_size=args.batch_size, num_workers=1, sampler=torch.utils.data.RandomSampler(data_no_label)) #sampler=sampler
+      batch_size=args.batch_size, num_workers=1, shuffle=True) #sampler=sampler
   if SEMI_SELF:
     train_no_label_loader = torch.utils.data.DataLoader(
         data_no_label,
-        batch_size=args.batch_size_u, num_workers=1, sampler=torch.utils.data.RandomSampler(data_no_label)) #sampler=sampler
+        batch_size=args.batch_size_u, num_workers=1, shuffle=True) #sampler=sampler
+    train_loader_no_label_test = torch.utils.data.DataLoader(
+        data_no_label_test,
+        batch_size=args.batch_size_u, num_workers=1, shuffle=True) 
 
   if VALID:
     val_loader = torch.utils.data.DataLoader(
@@ -429,6 +469,7 @@ model_name = "/" + args.name
 
 labeled_iter = iter(train_loader)
 unlabeled_iter = iter(train_no_label_loader)
+unlabeled_iter_test = iter(train_loader_no_label_test)
 
 device = torch.device('cuda')
 
@@ -495,20 +536,24 @@ for epoch in range(1, args.epochs + 1):
       except:
           labeled_iter = iter(train_loader)
           inputs_x, targets_x = labeled_iter.next()
-
-      try:
-          inputs_u, _ = unlabeled_iter.next()
-      except:
-          unlabeled_iter = iter(train_no_label_loader)
-          inputs_u, _ = unlabeled_iter.next()
+      if args.data_no_label_inat:
+        if np.random.rand() > 0.5:
+          try:
+              inputs_u, _ = unlabeled_iter.next()
+          except:
+              unlabeled_iter = iter(train_no_label_loader)
+              inputs_u, _ = unlabeled_iter.next()
+        else:
+           try:
+              inputs_u, _ = unlabeled_iter_test.next()
+           except:
+              unlabeled_iter_test = iter(train_no_label_loader_test)
+              inputs_u, _ = unlabeled_iter_test.next()
+         
 
       optimizer.zero_grad()
       batch_size = inputs_x.shape[0]
-      # inputs = interleave(
-      #     torch.cat((inputs_x, inputs_u_w, inputs_u_s)), 2*args.batch_size_u+1).to(device)
-
-      ### rotate 
-      
+    
     
       inputs = torch.cat((inputs_x, inputs_u)).to(device)
       targets_x = targets_x.to(device)
@@ -521,10 +566,10 @@ for epoch in range(1, args.epochs + 1):
      
     
       logits_x = logits[:batch_size]
-      try:
-        logits_u, _ = logits[batch_size:].chunk(2)
-      except ValueError:
-        logits_u = logits[batch_size:].chunk(1)[0]
+      # try:
+      #   logits_u, _ = logits[batch_size:].chunk(2)
+      # except ValueError:
+      #   logits_u = logits[batch_size:].chunk(1)[0]
 
       del logits
 

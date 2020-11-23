@@ -8,7 +8,6 @@ from torch.autograd import Variable
 from tqdm import tqdm
 from adabelief_pytorch import AdaBelief
 from ranger_adabelief import RangerAdaBelief
-from inception import *
 from data import ConcatDataset
 import pretrainedmodels
 from sklearn.model_selection import train_test_split
@@ -23,7 +22,7 @@ from data import DoubleChannels, TripleChannels
 from efficientnet_pytorch import EfficientNet
 from efficientnet_pytorch.utils import Conv2dStaticSamePadding
 import torchvision.models as models 
-
+from model import SpinalNet_FC
 
 # Training settings
 parser = argparse.ArgumentParser(description='RecVis A3 training script')
@@ -80,7 +79,7 @@ if not os.path.isdir(args.experiment):
 
 # Data initialization and loading
 from data import data_transforms_train, data_transforms_val
-MODEL = "EFFICIENT" # EFFICIENT INCEPTION INCEPTIONRESNETV2 VIT BIT RESNEXT RESNET
+MODEL = "EFFICIENT" # EFFICIENT INCEPTION INCEPTIONRESNETV2 VIT BIT RESNEXT RESNET SPINAL
 FREEZE = False
 TRAIN_IMAGES = '/train_images' # '/train_images' '/images
 VALID_IMAGES = '/val_images' #
@@ -196,8 +195,8 @@ if CHANNELS != "DOUBLE" and CHANNELS != "TRIPLE":
     targets +=  data_pseudo.targets
     targets +=  data_nabirds.targets
 
-  elif args.data_inat and args.data_crop  and args.data_pseudo :
-    train_data = ConcatDataset(data_orig, data_crop, data_pseudo, data_inat)
+  elif args.data_inat and args.data_crop  and args.data_pseudo and args.data_attention:
+    train_data = ConcatDataset(data_orig, data_crop, data_pseudo, data_inat, data_attention)
    
     targets += data_crop.targets
     # targets +=  data_attention.targets
@@ -321,6 +320,10 @@ elif MODEL == "BIT":
 elif MODEL == "RESNET":
   model = torch.hub.load('pytorch/vision:v0.6.0', 'resnet101', pretrained=True)  
   model.fc = nn.Linear(2048, args.num_classes, bias = True)
+elif MODEL == "SPINAL":
+  model = models.wide_resnet101_2(pretrained=True)
+  model.fc = SpinalNet_FC(args.num_classes) #SpinalNet_VGG
+
 
 print("USING : ", CHANNELS)
 
@@ -347,11 +350,11 @@ else:
   optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum, weight_decay = args.weight_decay) #momentum=args.momentum
   lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, args.epochs)
   # optimizer = AdaBelief(model.parameters(), lr=args.lr, eps=1e-16, betas=(0.9,0.999), weight_decouple = True, rectify = False)
-  # optimizer = RangerAdaBelief(model.parameters(), lr=args.lr, eps=1e-12, betas=(0.9,0.999))
+  optimizer = RangerAdaBelief(model.parameters(), lr=args.lr, eps=1e-12, betas=(0.9,0.999))
   # lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, args.epochs)
 
 def train(epoch):
-    lr_scheduler.step()
+    # lr_scheduler.step()
     model.train()
     correct = 0
     for batch_idx, (data, target) in enumerate(train_loader):

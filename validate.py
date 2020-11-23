@@ -2,7 +2,6 @@ from efficientnet_pytorch import EfficientNet
 import torch 
 from data import data_transforms_train, data_transforms_val
 from torchvision import datasets
-from inception import *
 import torch.nn as nn
 import argparse
 from data import ConcatDataset

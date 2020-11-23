@@ -2,7 +2,6 @@ from efficientnet_pytorch import EfficientNet
 import torch 
 from data import data_transforms_train, data_transforms_val
 from torchvision import datasets
-from inception import *
 import torch.nn as nn
 import argparse
 from torchvision import datasets
@@ -42,7 +41,7 @@ def normalize8(I):
   return I.astype(np.uint8)
 
 DATA = args.dir
-TEST_IMAGES = '/test_images' # '/test_images' 'train_images Inat_mini2
+TEST_IMAGES = '/Inat_mini2' # '/test_images' 'train_images Inat_mini2
 model_path = args.model
 model_path2 = args.model2
 RESIZE = 500 #None

@@ -74,7 +74,7 @@ parser.add_argument('--name', type=str, default='efficient', metavar='E',
                     help='folder where experiment outputs are located.')
 parser.add_argument('--num_classes', type=int, default=20, metavar='N',
                     help='number of epochs to train (default: 10)')
-parser.add_argument('--online_da', type=bool, default=True, metavar='N',
+parser.add_argument('--online-da', type=bool, default=True, metavar='N',
                     help='online data augmentaiion')
 # parser.add_argument('--merged', type=bool, default=False, metavar='N',
 #                     help='use several datasets')

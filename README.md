@@ -1,6 +1,7 @@
-## Object recognition and computer vision 2020/2021
+## Fine Grained Image Classification
 
-### Assignment 3: Image classification 
+### Introduction
+This repository includes the solution that achieves 85 % accuracy on  the public leaderboard of the private competition during the MVA Master.
 
 #### Requirements
 1. Install PyTorch from http://pytorch.org
@@ -10,28 +11,27 @@
 ```bash
 pip install -r requirements.txt
 ```
+Also you need to clone and install detectron to generate the cropped images:
+```bash
 
+pip install --upgrade mxnet-cu101 gluoncv
+pip install -U 'git+https://github.com/facebookresearch/fvcore.git' 'git+https://github.com/cocodataset/cocoapi.git#subdirectory=PythonAPI'
+git clone https://github.com/facebookresearch/detectron2 detectron2_repo
+pip install -e detectron2_repo
+```
 #### Dataset
 We will be using a dataset containing 200 different classes of birds adapted from the [CUB-200-2011 dataset](http://www.vision.caltech.edu/visipedia/CUB-200-2011.html).
 Download the training/validation/test images from [here](https://www.di.ens.fr/willow/teaching/recvis18orig/assignment3/bird_dataset.zip). The test image labels are not provided.
 
-#### Training and validating your model
+#### General Pipeline
+
+1. Run `preprocess_detectron.py` to generate cropped images using MaskRCNN trained on COCO dataset (this will help the model to focus on birds).
+2. Train and Generate Attention images using `main_wsdan.py` and `preprocess_attention.py`. 
 Run the script `main.py` to train your model.
+3. Run and experiment different appraches by running and changing the parameters of `main.py`.
+4. You can test also some semi and self supervised approaches (including the SOTA FixMatch) by trying `train_fix_match.py`, `train_rotate.py`, `train_semi_ae.py` and `train_semi_self.py`.
+5. Fially validate and evaluate your model using one of provided scripts (some include ensembling evaluation).
 
-Modify `main.py`, `model.py` and `data.py` for your assignment, with an aim to make the validation score better.
-
-- By default the images are loaded and resized to 64x64 pixels and normalized to zero-mean and standard deviation of 1. See data.py for the `data_transforms`.
-
-#### Evaluating your model on the test set
-
-As the model trains, model checkpoints are saved to files such as `model_x.pth` to the current working directory.
-You can take one of the checkpoints and run:
-
-```
-python evaluate.py --data [data_dir] --model [model_file]
-```
-
-That generates a file `kaggle.csv` that you can upload to the private kaggle competition website.
 
 #### Acknowledgments
 Adapted from Rob Fergus and Soumith Chintala https://github.com/soumith/traffic-sign-detection-homework.<br/>

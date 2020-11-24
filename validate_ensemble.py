@@ -20,11 +20,11 @@ args = parser.parse_args()
 
 
 DATA = args.data
-VALID_IMAGES = '/Inat_mini2' # val_images
+VALID_IMAGES = '/val_images' # val_images
 TRAIN_IMAGES = '/train_images' # '/train_images' '/images
 
 model_path = args.model
-model_path0 = 'experiment/fix_match_on_trainema_model_8.pth'
+model_path0 = 'experiment/pseud2_inat_model_10.pth'
 model_path1 = 'eff_pseudo_2_sgd_model_4.pth'
 use_cuda = True
 
@@ -87,6 +87,10 @@ else:
 model.load_state_dict(checkpoint) 
 model0.load_state_dict(checkpoint0) 
 model1.load_state_dict(checkpoint1) 
+from scipy.stats import entropy
+
+softmax = nn.Softmax()
+
 
 if use_cuda:
   model.cuda()
@@ -103,36 +107,48 @@ def validation():
     for indata, target in val_loader:
         if use_cuda:
             indata, target = indata.cuda(), target.cuda()
-        output = model(indata)
+        # output = model(indata)
         output0 = model0(indata)
         output1 = model1(indata)
         # sum up batch loss
         criterion = torch.nn.CrossEntropyLoss(reduction='mean')
-        validation_loss += criterion(output, target).data.item()
+        # validation_loss += criterion(output, target).data.item()
 
-
-        score, pred = output.data.max(1, keepdim=True)
+        # score, pred = output.data.max(1, keepdim=True)
         score0, pred0 = output0.data.max(1, keepdim=True)
         score1, pred1 = output1.data.max(1, keepdim=True)
-
-        
-        output_ensemble = torch.cat((pred, pred0 , pred1) , dim=0)
-        # mask = output_ensemble.gt(0)
+        proba0 = softmax(output0.data[0]/1.5)
+        proba1 = softmax(output1.data[0]/1.5)
+        en0 = entropy(proba0.cpu().numpy(), base=2)
+        en1 = entropy(proba1.cpu().numpy(), base=2)
+        # if en0 < en1:
+        #    pred_ensemble = pred0
+        #    print(entropy(proba0.cpu().numpy(), base=2))
+        # else:
+        #   pred_ensemble = pred1
+        # output_ensemble = torch.cat((pred, pred0 , pred1) , dim=0)
+        # # mask = output_ensemble.gt(0)
      
-        output_ensemble_score = torch.cat((score, score0, score1) , dim=0)
-        # output_ensemble_score = output_ensemble_score * mask
+        # output_ensemble_score = torch.cat((score, score0, score1) , dim=0)
+        # # output_ensemble_score = output_ensemble_score * mask
 
-        max_idx = output_ensemble_score.max(0)[1].item()
+        # max_idx = output_ensemble_score.max(0)[1].item()
     
-        # max_add = [0, 10]
+        # # max_add = [0, 10]
       
-        pred_ensemble = output_ensemble[max_idx] #+ max_add[max_idx]
+        # pred_ensemble = output_ensemble[max_idx] #+ max_add[max_idx]
+         
+        output_ensemble = ( en0*output0 + en1*output1) / 2
+        pred_ensemble = output_ensemble.data.max(1, keepdim=False)[1]
+
         # # print(max_idx)
         # # print(pred_ensemble)
         # # print(target)
         correct_ensemble += pred_ensemble.eq(target.data.view_as(pred_ensemble)).cpu().sum()
 
         # get the index of the max log-probability
+        pred = pred1
+        output = output1
         pred = output.data.max(1, keepdim=True)[1]
         correct += pred.eq(target.data.view_as(pred)).cpu().sum()
 

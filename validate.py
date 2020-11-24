@@ -19,7 +19,7 @@ args = parser.parse_args()
 
 
 DATA = args.data
-VALID_IMAGES = '/val_images' #Inat_mini2 val_images
+VALID_IMAGES = '/Inat_mini2' #Inat_mini2 val_images
 TRAIN_IMAGES = '/train_images' # '/train_images' '/images
 
 model_path = args.model

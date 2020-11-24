@@ -46,7 +46,8 @@ from efficientnet_pytorch import EfficientNet
 #   model2.eval()
 #   model2.cuda()
 
-model = EfficientNet.from_pretrained('efficientnet-b6', num_classes=20)
+model = EfficientNet.from_pretrained('efficientnet-b7', num_classes=20)
+model2 = EfficientNet.from_pretrained('efficientnet-b6', num_classes=20)
 
 
 # model = inception_v3(pretrained=False)
@@ -74,6 +75,11 @@ if args.model2:
   model1.eval()
   model1.cuda()
 
+  state_dict2 = torch.load('eff_fine_tuned_pseud_inat_model_3.pth')
+  model2.load_state_dict(state_dict2)
+  model2.eval()
+  model2.cuda()
+
 def pil_loader(path):
     # open path as file to avoid ResourceWarning (https://github.com/python-pillow/Pillow/issues/835)
     with open(path, 'rb') as f:
@@ -97,6 +103,8 @@ classes_to_names = {v: k for k, v in data_val.class_to_idx.items()}
     
 output_file = open(args.outfile, "w")
 output_file.write("Id,Category\n")
+
+from scipy.stats import entropy
 
 correct, correct_mask, correct_crop, correct_ensemble = 0, 0, 0, 0
 len_data = 0
@@ -131,12 +139,12 @@ for f in tqdm(os.listdir(test_dir)):
           data_crop = data_crop.cuda().unsqueeze(0)
           data_attention = data_attention.cuda().unsqueeze(0)
 
-      output = model(data_crop)
+      output = model(data)
       pred_score, pred = output.data.max(1, keepdim=False)
   
 
-      # output_mask = model(data_crop)
-      # pred_mask_score, pred_mask = output_mask.data.max(1, keepdim=False)
+      output_mask = model2(data)
+      pred_mask_score, pred_mask = output_mask.data.max(1, keepdim=False)
   
 
       output_crop = model1(data_crop)
@@ -146,19 +154,19 @@ for f in tqdm(os.listdir(test_dir)):
 
       
 
-      output_ensemble = torch.cat((pred, pred_crop) , dim=0)
-      output_ensemble_score = torch.cat((pred_score, pred_crop_score) , dim=0)
+      output_ensemble = torch.cat((pred, pred_crop, pred_mask) , dim=0)
+      output_ensemble_score = torch.cat((pred_score, pred_crop_score, pred_mask_score) , dim=0)
 
       max_idx = output_ensemble_score.max(0)[1].item()
       pred_ensemble = output_ensemble[max_idx]
       
 
-      # output_ensemble = ( output_crop + output_mask + output) / 3
+      # output_ensemble = ( output_crop  + output) / 2
       # pred_ensemble = output_ensemble.data.max(1, keepdim=False)[1]
      
 
       # output_file.write("%s,%d\n" % (f[:-4], pred_ensemble))
-      output_file.write("%s,%d\n" % (f[:-4], pred))
+      output_file.write("%s,%d\n" % (f[:-4], pred_ensemble))
 
 output_file.close()
 

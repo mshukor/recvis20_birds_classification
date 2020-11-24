@@ -80,7 +80,7 @@ if not os.path.isdir(args.experiment):
 # Data initialization and loading
 from data import data_transforms_train, data_transforms_val
 MODEL = "EFFICIENT" # EFFICIENT INCEPTION INCEPTIONRESNETV2 VIT BIT RESNEXT RESNET SPINAL
-FREEZE = False
+FREEZE = True
 TRAIN_IMAGES = '/train_images' # '/train_images' '/images
 VALID_IMAGES = '/val_images' #
 VALID = True
@@ -131,7 +131,7 @@ if NEW_EVAL:
 else:
   data_orig = datasets.ImageFolder(args.data + TRAIN_IMAGES,
                             transform=data_transforms_train)
-  data_orig_val = datasets.ImageFolder('bird_dataset_0' + VALID_IMAGES,
+  data_orig_val = datasets.ImageFolder('bird_dataset' + VALID_IMAGES,
                             transform=data_transforms_val)
   targets = data_orig.targets
 if CHANNELS == "DOUBLE":
@@ -195,11 +195,11 @@ if CHANNELS != "DOUBLE" and CHANNELS != "TRIPLE":
     targets +=  data_pseudo.targets
     targets +=  data_nabirds.targets
 
-  elif args.data_crop  and args.data_pseudo and args.data_attention:
+  elif args.data_crop  and args.data_pseudo  and args.data_attention:
     train_data = ConcatDataset(data_orig, data_crop, data_pseudo, data_attention)
    
     targets += data_crop.targets
-    # targets +=  data_attention.targets
+    targets +=  data_attention.targets
     targets +=  data_pseudo.targets
     # targets +=  data_inat.targets
 
@@ -215,6 +215,10 @@ if CHANNELS != "DOUBLE" and CHANNELS != "TRIPLE":
     train_data = ConcatDataset(data_orig, data_crop, data_attention)
     targets += data_crop.targets
     targets +=  data_attention.targets
+
+  elif args.data_inat:
+    train_data = ConcatDataset(data_orig, data_inat)
+    targets += data_inat.targets
 
   elif args.data_crop:
     train_data = ConcatDataset(data_orig, data_crop)
@@ -276,16 +280,23 @@ if MODEL == "MIX":
 
 elif MODEL == "EFFICIENT":
   if PRETRAIN:
-    model = EfficientNet.from_pretrained('efficientnet-b6', num_classes=555)
+    model = EfficientNet.from_pretrained('efficientnet-b', num_classes=555)
     checkpoint = torch.load("experiment/efficient_pretrain_nabirds_model_1.pth")
     model.load_state_dict(checkpoint) 
     model._fc = nn.Linear(2048, args.num_classes)
   else:
-    model = EfficientNet.from_pretrained('efficientnet-b6', num_classes=args.num_classes)
+    model = EfficientNet.from_pretrained('efficientnet-b7', num_classes=args.num_classes)
     if args.model:
         print("loading pretrained model")
         checkpoint = torch.load(args.model)
         model.load_state_dict(checkpoint) 
+    if FREEZE:
+      for name, param in model.named_parameters():
+        if param.requires_grad:
+          if '_blocks.45' in name:
+            break
+          print(name)
+          param.requires_grad = False
 
     if CHANNELS == "DOUBLE":
       model._conv_stem = Conv2dStaticSamePadding(in_channels=3*2, out_channels=56, kernel_size=(3, 3), stride=2, image_size=(456, 456))

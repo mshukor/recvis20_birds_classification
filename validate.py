@@ -19,7 +19,7 @@ args = parser.parse_args()
 
 
 DATA = args.data
-VALID_IMAGES = '/Inat_mini2' #Inat_mini2 val_images
+VALID_IMAGES = '/val_images' #Inat_mini2 val_images
 TRAIN_IMAGES = '/train_images' # '/train_images' '/images
 
 model_path = args.model
@@ -54,7 +54,12 @@ val_loader = torch.utils.data.DataLoader(
 
 print(data_val.classes)
 # model = inception_v3(pretrained=False)
-model = EfficientNet.from_pretrained('efficientnet-b6', num_classes=20)
+SEMI = False
+if not SEMI:
+  model = EfficientNet.from_pretrained('efficientnet-b6', num_classes=20)
+else:
+  model = EfficientNet.from_pretrained('efficientnet-b6', num_classes=256)
+
 if use_cuda:
   checkpoint = torch.load(model_path)
 else:
@@ -63,18 +68,38 @@ else:
 
 # model.fc = nn.Linear(2048, 20)
 
+
 model.load_state_dict(checkpoint) 
+
+if SEMI:
+  checkpoint1 = torch.load('experiment/eff6_ae_rotclass_model_11.pth')
+
+  classifier =  nn.Sequential(
+            nn.Linear(256, 128),
+            nn.ReLU(),
+            nn.Linear(128, 20),
+          )
+  classifier.load_state_dict(checkpoint1) 
+
+
 
 if use_cuda:
   model.cuda()
+  if SEMI:
+    classifier.cuda()
 def validation():
     model.eval()
+    if SEMI:
+     classifier.eval()
+
     validation_loss = 0
     correct = 0
     for indata, target in tqdm(val_loader):
         if use_cuda:
             indata, target = indata.cuda(), target.cuda()
         output = model(indata)
+        if SEMI:
+          output = classifier(output)
         # sum up batch loss
         criterion = torch.nn.CrossEntropyLoss(reduction='mean')
         validation_loss += criterion(output, target).data.item()

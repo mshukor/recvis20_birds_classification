@@ -124,7 +124,7 @@ TEST_IMAGES = '/test_images'
 VALID = True
 PRETRAIN = False
 CHANNELS = "SINGLE" # "TRIPLE" DOUBLE SINGLE
-NEW_EVAL = False
+NEW_EVAL = True
 BALANCE_CLASSES = False
 FIX_MATCH = True
 SEMI_SELF = True
@@ -426,11 +426,11 @@ if MODEL == "MIX":
 else:
   # optimizer = optim.Adam(model.parameters(), lr=args.lr) #momentum=args.momentum
 
-  optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum, weight_decay=args.weight_decay) #momentum=args.momentum
-  lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, args.epochs)
+  # optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum, weight_decay=args.weight_decay) #momentum=args.momentum
+  # lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, args.epochs)
 
   # optimizer = AdaBelief(model.parameters(), lr=args.lr, eps=1e-16, betas=(0.9,0.999), weight_decouple = True, rectify = False)
-  # optimizer = RangerAdaBelief(model.parameters(), lr=args.lr, eps=1e-12, betas=(0.9,0.999))
+  optimizer = RangerAdaBelief(model.parameters(), lr=args.lr, eps=1e-12, betas=(0.9,0.999))
   # lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, args.epochs)
 
 
@@ -529,7 +529,7 @@ decoder.cuda()
 model.cuda()
 classifier.cuda()
 for epoch in range(1, args.epochs + 1):
-  lr_scheduler.step()
+  # lr_scheduler.step()
   for batch_idx in range(args.eval_step):
       try:
           inputs_x, targets_x = labeled_iter.next()
@@ -575,8 +575,11 @@ for epoch in range(1, args.epochs + 1):
 
       Lx = F.cross_entropy(logits_x, targets_x, reduction='mean')
 
+      angle = np.random.choice([-90., 0., 90., 180.])
+      # print(int(angle))
+      inputs_u_rot = TF.rotate(inputs, int(angle)).cuda()
 
-      Lu_semi = (F.mse_loss(pred_decoder, inputs,
+      Lu_semi = (F.mse_loss(pred_decoder, inputs_u_rot,
                           reduction='none')).mean()
 
       loss = Lx + lambda_u_semi * Lu_semi 

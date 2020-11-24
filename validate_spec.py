@@ -20,12 +20,12 @@ args = parser.parse_args()
 
 
 DATA = args.data
-VALID_IMAGES = '/Inat_mini2' # val_images
+VALID_IMAGES = '/val_images' # val_images
 TRAIN_IMAGES = '/train_images' # '/train_images' '/images
 
 model_path = args.model
-model_path0 = 'experiment/fix_match_on_trainema_model_8.pth'
-model_path1 = 'eff_pseudo_2_sgd_model_4.pth'
+model_path0 = 'experiment/black_spec_5_model_4.pth'
+model_path1 = 'fix_match_on_trainema_model_8.pth'
 use_cuda = True
 
 
@@ -58,7 +58,7 @@ val_loader = torch.utils.data.DataLoader(
 
 # model = inception_v3(pretrained=False)
 model = EfficientNet.from_pretrained('efficientnet-b6', num_classes=20)
-model0 = EfficientNet.from_pretrained('efficientnet-b6', num_classes=20)
+model0 = EfficientNet.from_pretrained('efficientnet-b6', num_classes=5)
 model1 = EfficientNet.from_pretrained('efficientnet-b6', num_classes=20)
 
 # model = torch.hub.load('pytorch/vision:v0.6.0', 'resnet18', pretrained=True)  
@@ -88,6 +88,15 @@ model.load_state_dict(checkpoint)
 model0.load_state_dict(checkpoint0) 
 model1.load_state_dict(checkpoint1) 
 
+data_orig = datasets.ImageFolder("bird_dataset" + '/val_images')
+classes_to_names_orig = {v: k for k, v in data_orig.class_to_idx.items()}
+names_to_classes = data_orig.class_to_idx
+
+data_spec = datasets.ImageFolder("bird_dataset_0" + '/val_images')
+classes_to_names_spec = {v: k for k, v in data_spec.class_to_idx.items()}
+names_to_class_spec = data_spec.class_to_idx
+selected_classes = ['030.Fish_Crow', '009.Brewer_Blackbird', '029.American_Crow', '011.Rusty_Blackbird', '031.Black_billed_Cuckoo']
+
 if use_cuda:
   model.cuda()
   model0.cuda()
@@ -115,18 +124,39 @@ def validation():
         score0, pred0 = output0.data.max(1, keepdim=True)
         score1, pred1 = output1.data.max(1, keepdim=True)
 
-        
-        output_ensemble = torch.cat((pred, pred0 , pred1) , dim=0)
-        # mask = output_ensemble.gt(0)
-     
-        output_ensemble_score = torch.cat((score, score0, score1) , dim=0)
-        # output_ensemble_score = output_ensemble_score * mask
 
-        max_idx = output_ensemble_score.max(0)[1].item()
-    
-        # max_add = [0, 10]
-      
-        pred_ensemble = output_ensemble[max_idx] #+ max_add[max_idx]
+ 
+        cls = classes_to_names_orig[int(pred.item())]
+        cls1 = classes_to_names_orig[int(pred1.item())]
+        if cls in selected_classes and cls1 in selected_classes:
+          idx = names_to_class_spec[cls]
+          idx1 = names_to_class_spec[cls1]
+
+          out = output0.data[0][idx]
+          out1 = output0.data[0][idx1]
+         
+          if out > out1:
+            best = idx
+          else:
+            best = idx1
+          # best_score = torch.cat((score, score1) , dim=0)
+          # max_idx = best_score.max(0)[1].item()
+          # best = best_pred[max_idx] #+ max_add[max_idx]
+
+          pred_ensemble = names_to_classes[classes_to_names_spec[int(best)]]
+          pred_ensemble = torch.Tensor([pred_ensemble]).cuda()
+          print(classes_to_names_orig[int(pred.item())], classes_to_names_orig[int(pred0.item())])
+        else:
+
+          output_ensemble = torch.cat((pred, pred1) , dim=0)
+          output_ensemble_score = torch.cat((score, score1) , dim=0)
+          # output_ensemble_score = output_ensemble_score * mask
+          max_idx = output_ensemble_score.max(0)[1].item()
+          # max_add = [0, 10]
+          pred_ensemble = output_ensemble[max_idx] #+ max_add[max_idx]
+
+          # pred_ensemble = pred
+        
         # # print(max_idx)
         # # print(pred_ensemble)
         # # print(target)

@@ -13,7 +13,7 @@ parser.add_argument('--num-datasets', type=int, default=2, metavar='D',
 
 
 args = parser.parse_args()
-
+selected_classes = ['030.Fish_Crow', '009.Brewer_Blackbird', '029.American_Crow', '011.Rusty_Blackbird', '031.Black_billed_Cuckoo']
 
 input_folder = args.dir
 number_of_classes = len(list(os.listdir(input_folder + '/train_images')))
@@ -25,8 +25,12 @@ for data_folder in list(os.listdir(input_folder)): # Iterate over train, val and
   folder_id = 0
   idx = -1
   for folder in list(os.listdir(directory)): # Iterate over classes of birds
-    if folder_id % (number_of_classes/number_of_datasets) == 0 and idx < (number_of_datasets -1):
-      idx += 1
+    # if folder_id % (number_of_classes/number_of_datasets) == 0 and idx < (number_of_datasets -1):
+    #   idx += 1
+    if folder in selected_classes:
+      idx = 0
+    else:
+      continue
     print(idx)
     output_folder = input_folder + '_' + str(idx)
     os.makedirs(output_folder, exist_ok = True)

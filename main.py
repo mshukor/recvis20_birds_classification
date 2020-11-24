@@ -131,7 +131,7 @@ if NEW_EVAL:
 else:
   data_orig = datasets.ImageFolder(args.data + TRAIN_IMAGES,
                             transform=data_transforms_train)
-  data_orig_val = datasets.ImageFolder('bird_dataset' + VALID_IMAGES,
+  data_orig_val = datasets.ImageFolder('bird_dataset_0' + VALID_IMAGES,
                             transform=data_transforms_val)
   targets = data_orig.targets
 if CHANNELS == "DOUBLE":

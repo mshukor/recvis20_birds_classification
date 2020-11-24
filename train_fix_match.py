@@ -8,7 +8,6 @@ from torch.autograd import Variable
 from tqdm import tqdm
 from adabelief_pytorch import AdaBelief
 from ranger_adabelief import RangerAdaBelief
-from inception import *
 from data import ConcatDataset
 import pretrainedmodels
 from sklearn.model_selection import train_test_split
@@ -49,6 +48,8 @@ parser.add_argument('--data-no-label-inat', type=str, default=None, metavar='D',
 parser.add_argument('--data-no-label-inat-crop', type=str, default=None, metavar='D',
                     help="folder where data is located. train_images/ and val_images/ need to be found in the folder")
 parser.add_argument('--data-no-label-nabirds-crop', type=str, default=None, metavar='D',
+                    help="folder where data is located. train_images/ and val_images/ need to be found in the folder")
+parser.add_argument('--data-no-label-label', type=str, default=None, metavar='D',
                     help="folder where data is located. train_images/ and val_images/ need to be found in the folder")
 
 
@@ -128,6 +129,8 @@ CHANNELS = "SINGLE" # "TRIPLE" DOUBLE SINGLE
 NEW_EVAL = True
 BALANCE_CLASSES = True
 FIX_MATCH = True
+ON_LABELED = False
+
 if args.online_da:
   train_transform = data_transforms_val
 else:
@@ -158,7 +161,10 @@ if MODEL == "VIT":
     transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                  std=[0.229, 0.224, 0.225])
   ])
-
+# if ON_LABELED:
+#   data_transforms_training = TransformFixMatch()
+# else:
+data_transforms_training = data_transforms_val
 
 if NEW_EVAL:
   data_old_train = datasets.ImageFolder(args.data + TRAIN_IMAGES, transform=data_transforms_train)
@@ -183,25 +189,25 @@ elif CHANNELS == "TRIPLE":
 else:
   if args.data_crop:
     data_crop = datasets.ImageFolder(args.data_crop + TRAIN_IMAGES,
-                            transform=data_transforms_val)
+                            transform=data_transforms_training)
   else:
     data_crop = None
 
   if args.data_mask:
     data_mask = datasets.ImageFolder(args.data_mask + TRAIN_IMAGES,
-                          transform=data_transforms_val)
+                          transform=data_transforms_training)
   else:
     data_mask = None
 
   if args.data_pseudo:
     data_pseudo = datasets.ImageFolder(args.data_pseudo + TRAIN_IMAGES,
-                          transform=data_transforms_val)
+                          transform=data_transforms_training)
   else:
     data_pseudo = None
 
   if args.data_attention:
     data_attention = datasets.ImageFolder(args.data_attention + "/test_images",
-                          transform=data_transforms_val)
+                          transform=data_transforms_training)
   else:
     data_attention = None
 
@@ -247,6 +253,13 @@ else:
   else:
     data_no_label_nabirds_crop = None
 
+  if args.data_no_label_label:
+    data_no_label_label = datasets.ImageFolder(args.data_no_label_label + '/train_images',
+                          transform=TransformFixMatch())
+  else:
+    data_no_label_label = None
+
+
 if CHANNELS != "DOUBLE" and CHANNELS != "TRIPLE":
 
  
@@ -269,9 +282,9 @@ if CHANNELS != "DOUBLE" and CHANNELS != "TRIPLE":
   else:
     train_data = data_orig
 
-  if args.data_no_label_inat and args.data_no_label_nabirds and args.data_no_label_crop and args.data_no_label_inat_crop and args.data_no_label_nabirds_crop:
-    data_no_label = ConcatDataset(data_no_label_inat, data_no_label_nabirds, data_no_label_inat_crop, data_no_label_nabirds_crop)
-    data_no_label_test = ConcatDataset(data_no_label, data_no_label_crop)
+  if args.data_no_label_inat and args.data_no_label_label and args.data_no_label_crop and args.data_no_label_inat_crop:
+    data_no_label = ConcatDataset(data_no_label_inat, data_no_label_inat_crop)
+    data_no_label_test = ConcatDataset(data_no_label, data_no_label_crop, data_no_label_label)
 
   elif args.data_no_label_inat and args.data_no_label_nabirds and args.data_no_label_crop:
     data_no_label = ConcatDataset(data_no_label_inat, data_no_label_nabirds)
@@ -553,11 +566,14 @@ val_loader_crop = torch.utils.data.DataLoader(
 for epoch in range(1, args.epochs + 1):
   lr_scheduler.step()
   for batch_idx in range(args.eval_step):
+    
       try:
           inputs_x, targets_x = labeled_iter.next()
       except:
           labeled_iter = iter(train_loader)
           inputs_x, targets_x = labeled_iter.next()
+
+
       if args.data_no_label_inat:
         if np.random.rand() > 0.5:
           try:

@@ -28,8 +28,9 @@ Download the training/validation/test images from [here](https://www.di.ens.fr/w
 1. Run `preprocess_detectron.py` to generate cropped images using MaskRCNN trained on COCO dataset (this will help the model to focus on birds).
 2. Train and Generate Attention images using `main_wsdan.py` and `preprocess_attention.py`. 
 3. Run and experiment different approaches by running and changing the parameters of `main.py`.
-4. You can test also some semi and self supervised approaches (including the SOTA FixMatch) by trying `train_fix_match.py`, `train_rotate.py`, `train_semi_ae.py` and `train_semi_self.py`.
-5. Finally validate and evaluate your model using one of the provided scripts (some include ensembling evaluation).
+4. Once you are satisfied with your trained model, you can run `pseudo_annotate.py` to generate pseudo labels for the unannotated images, you can retrain on this pseudo annoated dataset. 
+5. You can test also some semi and self supervised approaches (including the SOTA FixMatch) by trying `train_fix_match.py`, `train_rotate.py`, `train_semi_ae.py` and `train_semi_self.py`.
+6. Finally validate and evaluate your model using one of the provided scripts (some include ensembling evaluation).
 
 
 #### Acknowledgments
